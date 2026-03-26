@@ -40,62 +40,22 @@ _DEFAULT_WEIGHTS: dict[str, float] = {
 # CANONICAL PHYSICS PARAMETER: δh  (vertical separation between orbital levels)
 # ─────────────────────────────────────────────────────────────────────────────
 #
-# Parameter name: DELTA_H_DEFAULT_M
-# Symbol:         δh
-# Units:          metres [m]
-# Physical meaning:
-#   The vertical distance between two satellite observing levels used in the
-#   vertical gradient super-resolution formula.  Specifically, δh is the
-#   height separation between the LEO/MEO primary observation altitude and a
-#   lower virtual observation surface (or between two orbit passes at different
-#   altitudes), across which the vertical gravity gradient Γ_zz is measured.
+# CONSTITUTIONAL RULE:
+#   δh MUST be supplied by the caller from Θ_c (commodity configuration).
+#   The shallow-system fallback below exists for unit tests and mock pipelines
+#   ONLY.  The scan pipeline (Phase L) is PROHIBITED from using this fallback;
+#   it must fetch delta_h_m from the active commodity’s Θ_c parameter block.
+#   Using this constant in production without a Θ_c override is a
+#   physics_model_version violation and will be caught by the pipeline guard
+#   in pipeline/scan_pipeline.py.
 #
-#   Role in formula:
-#     g_short [mGal] = Γ_zz [Eötvös] × 1e-4 [mGal·m/Eötvös] × δh [m]
-#
-#   Why δh is required:
-#     Γ_zz (the vertical gradient of g_z) has units of s⁻² (equivalently
-#     Eötvös, where 1 E = 10⁻⁹ s⁻²).  It quantifies how fast gravity changes
-#     with height.  To recover the *amplitude* of the short-wavelength signal
-#     that would be observed at a lower altitude δh below the satellite, we
-#     multiply by δh.  This is a first-order Taylor expansion of the gravity
-#     field:  g(z - δh) ≈ g(z) - Γ_zz × δh.
-#     The short-wavelength component is therefore:  g_short ≈ Γ_zz × δh.
-#
-# Parameter type: SCAN-RESOLUTION-DEPENDENT MODEL PARAMETER
-#   δh is NOT a fixed physical constant and NOT a pure unit conversion factor.
-#   It is the effective vertical sampling interval, which depends on:
-#     - The primary satellite orbit altitude (e.g. GOCE ≈ 255 km, GRACE ≈ 450 km)
-#     - The chosen super-resolution target depth (typically 50–200 m for
-#       near-surface geology, up to 2000 m for deep crustal targets)
-#     - Scan resolution and target commodity depth kernel (from Θ_c)
-#
-# Allowed range:  10 m ≤ δh ≤ 5000 m
-#   Lower bound: below 10 m the gradient approximation breaks down (near-field)
-#   Upper bound: above 5000 m the first-order Taylor expansion is unreliable;
-#                long-wavelength components should be used instead
-#
-# Default value:  50 m
-#   Represents a conservative near-surface super-resolution targeting the
-#   upper 50 m of crust — appropriate for lateritic/gossan surface expressions
-#   and shallow offshore sediment targets.  Deep orogenic or IOCG targets
-#   should use δh = 500–2000 m via Θ_c override.
-#
-# Versioning policy:
-#   δh is recorded in CanonicalScan.version_registry under the key
-#   "physics_model_version".  Any change to the default value constitutes
-#   a physics model version increment and requires all affected scans to
-#   be reprocessed (new scan_id, parent_scan_id linkage).
-#
-# Dimensional analysis:
-#   Γ_zz [Eötvös] × 1e-4 [mGal/(Eötvös·m)] × δh [m]
-#   = [E] × [mGal·m⁻¹·E⁻¹] × [m]
-#   = [mGal]  ✓
-#
-# Reference: Hofmann-Wellenhof & Moritz, Physical Geodesy (2006), §2-15;
-#            ESA GOCE mission documentation (SP-1233, 2006)
+# See config/constants.py — DELTA_H_SHALLOW_FALLBACK_M for the versioning
+# policy and DELTA_H_RANGE_MIN_M / DELTA_H_RANGE_MAX_M for allowed bounds.
 # ─────────────────────────────────────────────────────────────────────────────
-DELTA_H_DEFAULT_M: float = 50.0   # metres — scan-resolution-dependent; override via Θ_c
+DELTA_H_SHALLOW_FALLBACK_M: float = 50.0
+# ^ SHALLOW-SYSTEM FALLBACK ONLY — valid for lateritic/gossan/shallow offshore.
+# ^ Production scan pipeline MUST override this with Θ_c.delta_h_m.
+# ^ See commodity/library.py for per-family δh values.
 
 
 def decompose_wavelength_bands(
@@ -131,7 +91,7 @@ def decompose_wavelength_bands(
 
 def super_resolve_short_wavelength(
     gamma_zz_eotvos: Optional[float],
-    delta_h_m: float = DELTA_H_DEFAULT_M,
+    delta_h_m: float,           # REQUIRED — must be supplied from Θ_c; no default
 ) -> Optional[float]:
     """
     §6.3 — Super-resolve the short-wavelength gravity component.
@@ -182,8 +142,8 @@ def compose_gravity_signal(
 
 def build_gravity_composite(
     raw: RawGravityData,
+    delta_h_m: float,           # REQUIRED — must be supplied from Θ_c; no default
     weights: Optional[dict[str, float]] = None,
-    delta_h_m: float = DELTA_H_DEFAULT_M,
 ) -> GravityComposite:
     """
     Full multi-orbit gravity decomposition for one cell.

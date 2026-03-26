@@ -27,6 +27,43 @@ SCAN_JOB_HEARTBEAT_INTERVAL_SECONDS = 30
 OBSERVABLE_VECTOR_DIM = 42               # Defined in Phase A observable registry
                                           # Must match ObservableVector field count
 
+# ---------------------------------------------------------------------------
+# PHYSICS MODEL PARAMETERS — versioned; changes require physics_model_version bump
+# ---------------------------------------------------------------------------
+#
+# δh — Vertical sampling interval for gravity super-resolution
+#
+# Policy:
+#   δh (delta_h_m) MUST be sourced from Θ_c for every production scan.
+#   The shallow fallback below is for UNIT TESTS and mock pipelines only.
+#   The scan pipeline (Phase L) enforces this via a pre-flight guard:
+#     if theta_c.delta_h_m is None: raise PhysicsModelConfigError
+#
+# Changing any of these constants requires:
+#   1. Incrementing PHYSICS_MODEL_VERSION in config/versions.py
+#   2. Reprocessing all affected canonical scans under a new scan_id
+#      with parent_scan_id linkage
+#
+DELTA_H_SHALLOW_FALLBACK_M  = 50.0    # [m] shallow/lateritic/gossan — TESTS ONLY
+DELTA_H_RANGE_MIN_M         = 10.0    # [m] minimum valid δh
+DELTA_H_RANGE_MAX_M         = 5000.0  # [m] maximum valid δh
+#
+# Per-family canonical δh starting values (defined in commodity/library.py Θ_c;
+# reproduced here for version auditing only — library is authoritative):
+#
+#   Family                    | δh default (m) | Depth target
+#   --------------------------+-----------------+----------------------------
+#   Epithermal / lateritic    |   50            | Near-surface gossan
+#   Porphyry / IOCG           |  500            | 500-1500 m porphyry stocks
+#   Orogenic gold             |  200            | 100-500 m shear zones
+#   VMS / SEDEX               |  150            | 50-300 m seafloor systems
+#   Skarn / carbonate-hosted  |  300            | 200-1000 m contact zones
+#   Kimberlite                |  800            | 300-1500 m pipe targets
+#   Seabed polymetallic       |   75            | Near-seafloor nodule fields
+#   PGE layered intrusion     | 1000            | Deep Bushveld-type reefs
+#   Coal / oil sands          | 2000            | Deep basin targets               # Defined in Phase A observable registry
+                                          # Must match ObservableVector field count
+
 # Tier labels (display only — tiering logic lives exclusively in core/tiering.py)
 TIER_LABEL_1 = "TIER_1"
 TIER_LABEL_2 = "TIER_2"

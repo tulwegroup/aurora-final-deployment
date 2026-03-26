@@ -48,6 +48,7 @@ from app.services.gee import (
     acquire_raw_sensor_bundle,
 )
 from app.services.gravity import (
+    DELTA_H_SHALLOW_FALLBACK_M,
     build_gravity_composite,
     compose_gravity_signal,
     decompose_wavelength_bands,
@@ -209,7 +210,7 @@ class TestHarmonisationService:
 
     def test_build_harmonised_tensor_has_42_keys(self):
         raw_g = _raw_gravity()
-        composite = build_gravity_composite(raw_g)
+        composite = build_gravity_composite(raw_g, delta_h_m=DELTA_H_SHALLOW_FALLBACK_M)
         tensor = build_harmonised_tensor(
             cell_id="c001", scan_id="s001", environment="ONSHORE",
             optical_stacks=[RawOpticalStack(
@@ -247,7 +248,7 @@ class TestHarmonisationService:
     def test_environmental_modifier_multiplicative(self):
         """Modifier must scale existing values, not add to them."""
         raw_g = _raw_gravity()
-        composite = build_gravity_composite(raw_g)
+        composite = build_gravity_composite(raw_g, delta_h_m=DELTA_H_SHALLOW_FALLBACK_M)
         tensor_no_mod = build_harmonised_tensor(
             "c", "s", "ONSHORE",
             gravity_composite=composite, raw_gravity=raw_g,
@@ -303,8 +304,8 @@ class TestGravityService:
 
     def test_super_resolve_formula(self):
         """g_short = Γ_zz × 1e-4 × δh."""
-        g_short = super_resolve_short_wavelength(3200.0, delta_h_m=50.0)
-        assert g_short == pytest.approx(3200.0 * 1e-4 * 50.0)
+        g_short = super_resolve_short_wavelength(3200.0, delta_h_m=DELTA_H_SHALLOW_FALLBACK_M)
+        assert g_short == pytest.approx(3200.0 * 1e-4 * DELTA_H_SHALLOW_FALLBACK_M)
 
     def test_super_resolve_none_gradient(self):
         assert super_resolve_short_wavelength(None, 50.0) is None
@@ -317,7 +318,7 @@ class TestGravityService:
 
     def test_full_composite_pipeline(self):
         raw = _raw_gravity()
-        composite = build_gravity_composite(raw)
+        composite = build_gravity_composite(raw, delta_h_m=DELTA_H_SHALLOW_FALLBACK_M)
         assert isinstance(composite, GravityComposite)
         assert composite.g_composite_mgal is not None
         assert composite.super_resolution_applied is True
@@ -326,7 +327,7 @@ class TestGravityService:
 
     def test_all_none_gravity_produces_none_composite(self):
         raw = RawGravityData(cell_id="c", scan_id="s")
-        composite = build_gravity_composite(raw)
+        composite = build_gravity_composite(raw, delta_h_m=DELTA_H_SHALLOW_FALLBACK_M)
         assert composite.g_composite_mgal is None
         assert composite.super_resolution_applied is False
 
