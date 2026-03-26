@@ -1,12 +1,15 @@
 /**
  * PortfolioView — Portfolio & Territory Intelligence
- * Phase AD §AD.5
+ * Phase AD §AD.5 (Corrected)
  *
- * Displays ranked portfolio snapshot across territory/commodity entries.
- * All data sourced from stored canonical outputs — no ACIF recomputed here.
+ * CORRECTIONS APPLIED:
+ *   - portfolio_score → exploration_priority_index throughout
+ *   - weight_config_version displayed in snapshot header
+ *   - Metric label shown to enforce non-physical classification
  *
- * CONSTITUTIONAL RULE: portfolio_score is a display composite metric.
- * It is never presented as a scientific score, deposit certainty, or resource estimate.
+ * CONSTITUTIONAL RULE: exploration_priority_index is a non-physical aggregation
+ * metric combining stored canonical outputs. It is not a geological score,
+ * ACIF value, or resource estimate. No ACIF is recomputed here.
  */
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
@@ -14,7 +17,7 @@ import PortfolioRankingTable from "../components/PortfolioRankingTable";
 import TerritoryCard from "../components/TerritoryCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, BarChart3, AlertTriangle, Info } from "lucide-react";
+import { Loader2, BarChart3, AlertTriangle, Info, Settings } from "lucide-react";
 
 const COMMODITIES = ["", "gold", "copper", "lithium", "nickel"];
 const TERRITORIES  = ["", "country", "basin", "block", "concession", "province"];
@@ -38,10 +41,6 @@ export default function PortfolioView() {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams();
-      if (commodity) params.set("commodity", commodity);
-      if (territory) params.set("territory_type", territory);
-      params.set("risk_adjusted", riskAdjusted);
       const res = await base44.functions.invoke("portfolioSnapshot", {
         commodity: commodity || null,
         territory_type: territory || null,
@@ -57,7 +56,8 @@ export default function PortfolioView() {
 
   useEffect(() => { fetchSnapshot(); }, [commodity, territory, riskAdjusted]);
 
-  const riskDist = snapshot?.risk_summary || {};
+  const riskDist  = snapshot?.risk_summary || {};
+  const weightCfg = snapshot?.weight_config;
 
   return (
     <div className="p-6 max-w-7xl space-y-5">
@@ -74,10 +74,22 @@ export default function PortfolioView() {
       <div className="flex items-start gap-2 text-xs bg-blue-50 text-blue-800 border border-blue-200 rounded-lg px-4 py-2.5">
         <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
         <span>
-          Portfolio scores are composite display metrics assembled from stored canonical outputs (ACIF mean, Tier 1 density, veto rate).
-          No ACIF is recomputed. No tier is reassigned. This view does not constitute geological resource classification.
+          <strong>Exploration Priority Index</strong> is a non-physical aggregation metric.
+          It combines stored canonical outputs (ACIF mean, Tier 1 density, veto compliance) using versioned configurable weights.
+          It is not a geological score, deposit probability, ACIF value, or resource estimate.
+          No ACIF is recomputed. No tier is reassigned.
         </span>
       </div>
+
+      {/* Weight config badge */}
+      {weightCfg && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Settings className="w-3.5 h-3.5" />
+          <span>Weight config: <span className="font-mono">{weightCfg.version_id}</span></span>
+          <span>·</span>
+          <span>w_acif={weightCfg.w_acif_mean} · w_tier1={weightCfg.w_tier1_density} · w_veto={weightCfg.w_veto_compliance}</span>
+        </div>
+      )}
 
       {/* Filters */}
       <Card>
@@ -155,30 +167,27 @@ export default function PortfolioView() {
               <TabsContent value="cards" className="mt-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {(snapshot.entries || []).map(e => (
-                    <TerritoryCard
-                      key={e.entry_id}
-                      entry={e}
+                    <TerritoryCard key={e.entry_id} entry={e}
                       selected={selected?.entry_id === e.entry_id}
-                      onClick={() => setSelected(e)}
-                    />
+                      onClick={() => setSelected(e)} />
                   ))}
                   {(snapshot.entries || []).length === 0 && (
                     <div className="col-span-2 text-sm text-muted-foreground p-4 text-center border rounded-lg">
-                      No portfolio entries yet. Assemble entries from completed scans.
+                      No portfolio entries yet.
                     </div>
                   )}
                 </div>
               </TabsContent>
             </Tabs>
 
-            {/* Methodology note */}
-            <div className="mt-3 text-[10px] text-muted-foreground border rounded px-3 py-2 space-y-0.5">
-              <div className="font-medium">Ranking methodology</div>
-              <div>{snapshot.methodology_note}</div>
-            </div>
+            {snapshot.methodology_note && (
+              <div className="mt-3 text-[10px] text-muted-foreground border rounded px-3 py-2">
+                <div className="font-medium mb-0.5">Methodology</div>
+                <div>{snapshot.methodology_note}</div>
+              </div>
+            )}
           </div>
 
-          {/* Detail panel */}
           <div>
             {selected ? (
               <TerritoryCard entry={selected} detailed />

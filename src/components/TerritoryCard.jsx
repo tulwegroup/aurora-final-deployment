@@ -1,12 +1,14 @@
 /**
  * TerritoryCard — portfolio territory detail card
- * Phase AD §AD.6
+ * Phase AD §AD.6 (Corrected)
  *
- * Displays territory metadata, portfolio score, risk tier, and scan contributions.
+ * CORRECTIONS APPLIED:
+ *   - portfolio_score → exploration_priority_index
+ *   - weight_config_version shown in detailed view
+ *   - Metric label displayed to enforce non-physical classification
  *
  * CONSTITUTIONAL RULE: all values displayed verbatim from stored canonical outputs.
- * portfolio_score is labeled clearly as a composite display metric.
- * No resource classification language is used.
+ * exploration_priority_index is labeled as a non-physical aggregation metric.
  */
 const RISK_STYLES = {
   low:    "bg-emerald-100 text-emerald-800 border-emerald-300",
@@ -14,9 +16,9 @@ const RISK_STYLES = {
   high:   "bg-red-100 text-red-800 border-red-300",
 };
 
-const SCORE_COLOR = (score) => {
-  if (score >= 0.7) return "text-emerald-700";
-  if (score >= 0.4) return "text-amber-700";
+const INDEX_COLOR = (idx) => {
+  if (idx >= 0.7) return "text-emerald-700";
+  if (idx >= 0.4) return "text-amber-700";
   return "text-red-600";
 };
 
@@ -33,8 +35,8 @@ function Stat({ label, value, mono = false }) {
 export default function TerritoryCard({ entry, selected = false, onClick, detailed = false }) {
   if (!entry) return null;
 
-  const score = entry.portfolio_score ?? 0;
-  const pct   = Math.round(score * 100);
+  const idx = entry.exploration_priority_index ?? 0;
+  const pct = Math.round(idx * 100);
 
   return (
     <div
@@ -52,9 +54,9 @@ export default function TerritoryCard({ entry, selected = false, onClick, detail
           </div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          {entry.portfolio_rank && (
+          {entry.exploration_priority_rank && (
             <span className="text-xs bg-slate-100 text-slate-700 rounded px-1.5 py-0.5 font-mono">
-              #{entry.portfolio_rank}
+              #{entry.exploration_priority_rank}
             </span>
           )}
           <span className={`text-xs font-medium px-1.5 py-0.5 rounded border ${RISK_STYLES[entry.risk_tier] || ""}`}>
@@ -63,11 +65,11 @@ export default function TerritoryCard({ entry, selected = false, onClick, detail
         </div>
       </div>
 
-      {/* Score bar */}
+      {/* Index bar */}
       <div className="space-y-1">
         <div className="flex justify-between">
-          <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Portfolio Score</span>
-          <span className={`text-sm font-bold tabular-nums ${SCORE_COLOR(score)}`}>{pct}%</span>
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Exploration Priority Index</span>
+          <span className={`text-sm font-bold tabular-nums ${INDEX_COLOR(idx)}`}>{pct}%</span>
         </div>
         <div className="h-1.5 bg-muted rounded-full overflow-hidden">
           <div
@@ -77,8 +79,8 @@ export default function TerritoryCard({ entry, selected = false, onClick, detail
             style={{ width: `${pct}%` }}
           />
         </div>
-        <div className="text-[9px] text-muted-foreground">
-          Composite of stored: ACIF mean × 0.5 + Tier 1 density × 0.3 + (1−veto rate) × 0.2
+        <div className="text-[9px] text-muted-foreground italic">
+          Non-physical aggregation metric — not a geological score or ACIF value
         </div>
       </div>
 
@@ -94,28 +96,41 @@ export default function TerritoryCard({ entry, selected = false, onClick, detail
         )}
       </div>
 
-      {/* Risk notes (detailed mode) */}
-      {detailed && entry.risk_notes?.length > 0 && (
-        <div className="border-t pt-2 space-y-1">
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Risk Notes</div>
-          {entry.risk_notes.map((note, i) => (
-            <div key={i} className="text-xs text-muted-foreground">• {note}</div>
-          ))}
-        </div>
-      )}
+      {/* Detailed: weight config + risk notes + contributions */}
+      {detailed && (
+        <>
+          <div className="border-t pt-2 space-y-0.5">
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Weight Config</div>
+            <div className="text-[10px] font-mono text-muted-foreground">{entry.weight_config_version}</div>
+            {entry.weights_used && (
+              <div className="text-[10px] text-muted-foreground">
+                acif={entry.weights_used.w_acif_mean} · tier1={entry.weights_used.w_tier1_density} · veto={entry.weights_used.w_veto_compliance}
+              </div>
+            )}
+          </div>
 
-      {/* Scan contributions (detailed mode) */}
-      {detailed && entry.contributions?.length > 0 && (
-        <div className="border-t pt-2 space-y-1">
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Scan Contributions</div>
-          {entry.contributions.map(c => (
-            <div key={c.scan_id} className="text-[10px] font-mono text-muted-foreground flex justify-between">
-              <span>{c.scan_id.slice(0, 8)}…</span>
-              <span>{c.system_status}</span>
-              <span>T1: {c.tier_1_count}</span>
+          {entry.risk_notes?.length > 0 && (
+            <div className="border-t pt-2 space-y-1">
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Risk Notes</div>
+              {entry.risk_notes.map((note, i) => (
+                <div key={i} className="text-xs text-muted-foreground">• {note}</div>
+              ))}
             </div>
-          ))}
-        </div>
+          )}
+
+          {entry.contributions?.length > 0 && (
+            <div className="border-t pt-2 space-y-1">
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Scan Contributions</div>
+              {entry.contributions.map(c => (
+                <div key={c.scan_id} className="text-[10px] font-mono text-muted-foreground flex justify-between">
+                  <span>{c.scan_id.slice(0, 8)}…</span>
+                  <span>{c.system_status}</span>
+                  <span>T1: {c.tier_1_count}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
