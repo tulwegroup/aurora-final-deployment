@@ -19,6 +19,7 @@ import ReportViewer from './pages/ReportViewer';
 import PortfolioView from './pages/PortfolioView';
 import ClientWorkflow from './pages/ClientWorkflow';
 import PilotDashboard from './pages/PilotDashboard';
+import CommercialPackaging from './pages/CommercialPackaging';
 // Add page imports here
 
 const AuthenticatedApp = () => {
@@ -63,6 +64,7 @@ const AuthenticatedApp = () => {
         <Route path="/portfolio" element={<PortfolioView />} />
         <Route path="/workflow" element={<ClientWorkflow />} />
         <Route path="/pilots" element={<PilotDashboard />} />
+        <Route path="/commercial" element={<CommercialPackaging />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
