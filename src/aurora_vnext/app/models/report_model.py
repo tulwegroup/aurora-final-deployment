@@ -103,6 +103,7 @@ class ReportAuditTrail:
     prompt_version:              str    # version of the prompt template used
     grounding_snapshot_hash:     str    # SHA-256 of the full grounding input bundle
     calibration_version_id:      str    # from CalibrationScanTrace
+    msl_id:                      str    # unique identifier for the MSL entry used
     mineral_system_logic_version: str   # version of the mineral-system logic registry
     generated_at:                str    # ISO 8601 UTC
     generated_by:                str    # user or service ID

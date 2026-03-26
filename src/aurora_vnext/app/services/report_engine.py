@@ -290,14 +290,15 @@ class ReportEngine:
 
         # ── 7. Assemble report ──
         audit = ReportAuditTrail(
-            report_version              = REPORT_ENGINE_VERSION,
-            prompt_version              = TEMPLATE_VERSION,
-            grounding_snapshot_hash     = grounding_hash,
-            calibration_version_id      = cal_version,
-            mineral_system_logic_version= registry_version(),
-            generated_at                = datetime.utcnow().isoformat(),
-            generated_by                = actor_id,
-            llm_model_hint              = "aurora-interpretation-v1",
+            report_version               = REPORT_ENGINE_VERSION,
+            prompt_version               = TEMPLATE_VERSION,
+            grounding_snapshot_hash      = grounding_hash,
+            calibration_version_id       = cal_version,
+            msl_id                       = f"msl-{msl.commodity}-{msl.version}",
+            mineral_system_logic_version = registry_version(),
+            generated_at                 = datetime.utcnow().isoformat(),
+            generated_by                 = actor_id,
+            llm_model_hint               = "aurora-interpretation-v1",
         )
 
         report = GeologicalReport(
