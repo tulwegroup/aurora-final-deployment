@@ -47,9 +47,33 @@ The enforcement gate runs **before** any of the following operations:
 
 ---
 
-## 2. Backend Implementation
+## 2. Dual Validation Architecture
 
-### 2.1 noDriftRuntimeEnforcement Function
+**Phase AN Enhancement (Implemented at Launch):**
+
+Dual validation mode adds a secondary independent verification pass:
+
+```
+Export Request
+    │
+    ├─ PRIMARY:   noDriftRuntimeEnforcement (version/calibration consistency)
+    │   └─ Check calibration_version locked, geometry_hash present, ACIF present
+    │
+    ├─ SECONDARY: verifyCanonicalHashIndependent (independent hash recomputation)
+    │   └─ Retrieve AOI, recompute SHA-256, compare with stored hash
+    │   └─ Spot-check ACIF scores in first 10 cells
+    │
+    └─ Both must PASS → Export allowed
+       Any FAIL → Export blocked + under_review + PagerDuty critical
+```
+
+See: `aurora_vnext/docs/phase_an_dual_validation.md`
+
+---
+
+## 3. Backend Implementation
+
+### 3.1 noDriftRuntimeEnforcement Function
 
 **Location:** `functions/noDriftRuntimeEnforcement.js`
 
@@ -69,7 +93,7 @@ if (status === "VIOLATION_DETECTED") {
 }
 ```
 
-### 2.2 Return Payload (Pass)
+### 3.2 Return Payload (Pass)
 
 ```json
 {
@@ -85,7 +109,7 @@ if (status === "VIOLATION_DETECTED") {
 }
 ```
 
-### 2.3 Return Payload (Violation)
+### 3.3 Return Payload (Violation)
 
 ```json
 {
@@ -105,9 +129,9 @@ if (status === "VIOLATION_DETECTED") {
 
 ---
 
-## 3. Automation Trigger
+## 4. Automation Trigger
 
-### 3.1 Pre-Export Automation
+### 4.1 Pre-Export Automation (Dual Validation Sequence)
 
 **Type:** Entity (before-update hook)  
 **Trigger:** Scan status change → "exporting" or "generating_report"
@@ -120,7 +144,7 @@ Action:    invoke noDriftRuntimeEnforcement
 On Error:  Revert status to "ready", alert user
 ```
 
-### 3.2 Manual Trigger (Admin Override)
+### 4.2 Manual Trigger (Admin Override)
 
 Admins can manually invoke the check via the API:
 
@@ -132,11 +156,11 @@ curl -X POST https://api.aurora-osi.io/api/v1/enforce/drift-check \
 
 ---
 
-## 4. Audit Trail Recording
+## 5. Audit Trail Recording
 
 Every enforcement event is recorded in an immutable audit log.
 
-### 4.1 Audit Schema
+### 5.1 Audit Schema
 
 ```json
 {
@@ -154,7 +178,7 @@ Every enforcement event is recorded in an immutable audit log.
 }
 ```
 
-### 4.2 Enforcement Metrics
+### 5.2 Enforcement Metrics
 
 CloudWatch tracks:
 - Total enforcement checks per day
@@ -164,11 +188,11 @@ CloudWatch tracks:
 
 ---
 
-## 5. Resolution Procedure (Admin)
+## 6. Resolution Procedure (Admin)
 
 When a scan is flagged `under_review`, an admin must:
 
-### 5.1 Investigate
+### 6.1 Investigate
 
 ```
 1. Fetch scan details: GET /api/v1/scans/{scanId}
@@ -177,7 +201,7 @@ When a scan is flagged `under_review`, an admin must:
 4. Audit comparison: Original canonical data vs. current state
 ```
 
-### 5.2 Remediate
+### 6.2 Remediate
 
 **If violation is software bug:**
 ```
@@ -203,7 +227,7 @@ When a scan is flagged `under_review`, an admin must:
 4. Re-attempt export
 ```
 
-### 5.3 Clear Under-Review Status
+### 6.3 Clear Under-Review Status
 
 **Admin action (requires role="admin"):**
 
@@ -219,9 +243,9 @@ curl -X PATCH https://api.aurora-osi.io/api/v1/scans/scan-abc123 \
 
 ---
 
-## 6. PagerDuty Integration
+## 7. PagerDuty Integration
 
-### 6.1 Alert Configuration
+### 7.1 Alert Configuration
 
 ```yaml
 Incident Rule:
@@ -240,7 +264,7 @@ Escalation Policy:
   Escalate: VP Engineering (30 min)
 ```
 
-### 6.2 Sample Alert Payload
+### 7.2 Sample Alert Payload
 
 ```json
 {
@@ -265,9 +289,9 @@ Escalation Policy:
 
 ---
 
-## 7. Compliance & Validation
+## 8. Compliance & Validation
 
-### 7.1 Enforcement Testing
+### 8.1 Enforcement Testing
 
 Before production deployment, the following tests must pass:
 
@@ -305,7 +329,7 @@ Test 5 - Audit Trail Immutability:
   Status:   ✓ PASS
 ```
 
-### 7.2 Production Readiness Checklist
+### 8.2 Production Readiness Checklist
 
 | Item | Status | Evidence |
 |------|--------|----------|
@@ -319,7 +343,7 @@ Test 5 - Audit Trail Immutability:
 
 ---
 
-## 8. Enforcement Lock Engaged
+## 9. Enforcement Lock Engaged (with Dual Validation)
 
 **Aurora OSI production is now subject to No-Drift Runtime Enforcement.**
 
@@ -333,7 +357,7 @@ Test 5 - Audit Trail Immutability:
 
 ---
 
-## Appendix: Key Environment Variables
+## 10. Appendix: Key Environment Variables
 
 ```bash
 # Enable/disable enforcement (default: enabled in prod)
@@ -346,4 +370,4 @@ PAGERDUTY_SERVICE_ID=<service_id>
 # Alert thresholds
 ALERT_SEVERITY_LEVEL=CRITICAL
 ALERT_ESCALATION_TIME=15m
-``
+`
