@@ -13,6 +13,8 @@ import DatasetView from './pages/DatasetView';
 import TwinView from './pages/TwinView';
 import AdminPanel from './pages/AdminPanel';
 import GroundTruthAdmin from './pages/GroundTruthAdmin';
+import MapScanBuilder from './pages/MapScanBuilder';
+import MapExport from './pages/MapExport';
 // Add page imports here
 
 const AuthenticatedApp = () => {
@@ -49,6 +51,9 @@ const AuthenticatedApp = () => {
         <Route path="/twin/:scanId" element={<TwinView />} />
         <Route path="/admin" element={<AdminPanel />} />
         <Route path="/ground-truth" element={<GroundTruthAdmin />} />
+        <Route path="/map-builder" element={<MapScanBuilder />} />
+        <Route path="/map-export/:scanId" element={<MapExport />} />
+        <Route path="/map-export" element={<MapExport />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
