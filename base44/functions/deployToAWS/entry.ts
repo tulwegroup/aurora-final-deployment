@@ -19,6 +19,17 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Load AWS credentials from environment
+    const awsAccessKeyId = Deno.env.get('AWS_ACCESS_KEY_ID');
+    const awsSecretAccessKey = Deno.env.get('AWS_SECRET_ACCESS_KEY');
+
+    if (!awsAccessKeyId || !awsSecretAccessKey) {
+      return Response.json(
+        { error: 'AWS credentials not configured. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in dashboard secrets.' },
+        { status: 400 }
+      );
+    }
+
     const body = await req.json();
     const {
       aws_region = 'us-east-1',
