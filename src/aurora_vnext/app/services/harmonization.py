@@ -1,39 +1,43 @@
 """
 Aurora OSI vNext — Cross-Mission Sensor Harmonisation Service
-Phase H §H.4 | Patent Breakthrough 10
+Phase K §K.2 | Patent Breakthrough 10
 
-Converts raw sensor observations from ANY satellite mission into a
-universal, normalised feature tensor keyed by the 42 ObservableVector fields.
+Responsibility: Convert all raw sensor stacks into the canonical 42-observable
+feature tensor keyed by ObservableVector field names.
 
-Harmonisation is MISSION-NEUTRAL — the pipeline never sees mission-specific
-band names after this stage. All downstream scientific modules operate on
-the canonical 42-observable vocabulary.
+Layer rule: This is a Layer-2 Service.
+  - NO scoring, tiering, gates, or ACIF logic.
+  - Output is a raw (un-normalised) feature tensor ONLY.
+  - Normalisation is applied downstream by core/normalisation.py.
+
+Harmonisation is MISSION-NEUTRAL: after this stage, all downstream
+scientific modules operate on the canonical 42-observable vocabulary only.
 
 Two-stage process:
-  Stage 1 (mission_to_canonical): Convert mission-specific band readings to
-           canonical observable keys using per-mission spectral mappings.
-  Stage 2 (build_universal_feature_tensor): Aggregate harmonised values from
-           multiple missions for the same cell; compute final raw feature tensor.
+  Stage 1: mission_to_canonical — convert mission-specific band names
+           to canonical observable keys via MISSION_BAND_MAP.
+  Stage 2: build_universal_feature_tensor — aggregate across missions,
+           fuse multi-source inputs, apply environmental modifiers.
 
-The feature tensor is RAW (un-normalised). Normalisation is applied separately
-by core/normalisation.py after per-scan μ_k, σ_k are computed across the AOI.
+Environmental regime modifiers (from commodity library):
+  For OFFSHORE cells: x_off_* observables weighted > 1.0.
+  For ONSHORE cells: x_off_* fields forced to None regardless of inputs.
+  The modifier is multiplicative — never additive.
 
-Environmental regime modifiers for offshore cells are applied here —
-weighting the x_off_* observables more heavily relative to spectral features
-for offshore commodity scans.
-
-No scoring. No ACIF. No tiering. No imports from core/scoring, tiering, gates.
+CONSTITUTIONAL IMPORT GUARD: must never import from
+  core/scoring, core/tiering, core/gates, core/evidence,
+  core/causal, core/physics, core/temporal, core/priors, core/uncertainty.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Optional
 
 from app.models.extraction_types import (
     CorrectedOffshoreCell,
     GravityComposite,
     OffshoreGateViolation,
-    RawBathymetricData,
     RawGravityData,
     RawMagneticData,
     RawOpticalStack,
@@ -43,35 +47,35 @@ from app.models.extraction_types import (
 
 
 # ---------------------------------------------------------------------------
-# Mission-specific spectral mappings
-# Maps {mission_name: {observable_key: band_name}}
+# Mission-specific spectral band → canonical observable key mappings
 # ---------------------------------------------------------------------------
 
 MISSION_BAND_MAP: dict[str, dict[str, str]] = {
     "Sentinel-2": {
-        "x_spec_1": "B2",   # Blue 490nm
-        "x_spec_2": "B3",   # Green 560nm
-        "x_spec_3": "B4",   # Red 665nm
-        "x_spec_4": "B5",   # Red Edge 1 705nm
-        "x_spec_5": "B8",   # NIR 842nm
-        "x_spec_6": "B8A",  # NIR narrow 865nm
-        "x_spec_7": "B11",  # SWIR 1 1610nm
-        "x_spec_8": "B12",  # SWIR 2 2190nm
+        "x_spec_1": "B2",   # Blue    490 nm
+        "x_spec_2": "B3",   # Green   560 nm
+        "x_spec_3": "B4",   # Red     665 nm
+        "x_spec_4": "B5",   # RE1     705 nm
+        "x_spec_5": "B8",   # NIR     842 nm
+        "x_spec_6": "B8A",  # NIRn    865 nm
+        "x_spec_7": "B11",  # SWIR1  1610 nm
+        "x_spec_8": "B12",  # SWIR2  2190 nm
     },
     "Landsat-9": {
-        "x_spec_1": "B2",   # Blue 482nm
-        "x_spec_2": "B3",   # Green 562nm
-        "x_spec_3": "B4",   # Red 655nm
-        "x_spec_4": "B5",   # NIR 865nm
-        "x_spec_5": "B5",   # NIR (no red-edge equivalent — duplicate NIR)
-        "x_spec_6": "B5",   # NIR
-        "x_spec_7": "B6",   # SWIR 1 1610nm
-        "x_spec_8": "B7",   # SWIR 2 2200nm
+        "x_spec_1": "B2",   # Blue    482 nm
+        "x_spec_2": "B3",   # Green   562 nm
+        "x_spec_3": "B4",   # Red     655 nm
+        "x_spec_4": "B5",   # NIR     865 nm (no red-edge — duplicated)
+        "x_spec_5": "B5",   # NIR     865 nm
+        "x_spec_6": "B5",   # NIRn    865 nm (no equivalent)
+        "x_spec_7": "B6",   # SWIR1  1610 nm
+        "x_spec_8": "B7",   # SWIR2  2200 nm
     },
     "Sentinel-1": {
-        "x_sar_1": "VV",    # VV backscatter
-        "x_sar_2": "VH",    # VH backscatter
+        "x_sar_1": "VV",
+        "x_sar_2": "VH",
         "x_sar_3": "coherence",
+        "x_sar_4": "incidence_angle",
     },
     "ALOS-2": {
         "x_sar_1": "HH",
@@ -88,20 +92,27 @@ MISSION_BAND_MAP: dict[str, dict[str, str]] = {
     },
 }
 
+# All 42 canonical observable keys in field order
+CANONICAL_KEYS: tuple[str, ...] = (
+    "x_spec_1", "x_spec_2", "x_spec_3", "x_spec_4",
+    "x_spec_5", "x_spec_6", "x_spec_7", "x_spec_8",
+    "x_sar_1",  "x_sar_2",  "x_sar_3",  "x_sar_4",  "x_sar_5",  "x_sar_6",
+    "x_therm_1","x_therm_2","x_therm_3","x_therm_4",
+    "x_grav_1", "x_grav_2", "x_grav_3", "x_grav_4", "x_grav_5", "x_grav_6",
+    "x_mag_1",  "x_mag_2",  "x_mag_3",  "x_mag_4",  "x_mag_5",
+    "x_struct_1","x_struct_2","x_struct_3","x_struct_4","x_struct_5",
+    "x_hydro_1","x_hydro_2","x_hydro_3","x_hydro_4",
+    "x_off_1",  "x_off_2",  "x_off_3",  "x_off_4",
+)
+assert len(CANONICAL_KEYS) == 42
+
 
 # ---------------------------------------------------------------------------
-# Stage 1: Mission-to-canonical translation
+# Stage 1: Mission-to-canonical translators
 # ---------------------------------------------------------------------------
 
-def translate_optical_to_canonical(
-    stack: RawOpticalStack,
-) -> dict[str, Optional[float]]:
-    """
-    Map mission-specific optical band values to canonical x_spec_* keys.
-
-    Returns dict with keys matching ObservableVector x_spec_* fields.
-    Missing bands produce None (not zero).
-    """
+def translate_optical(stack: RawOpticalStack) -> dict[str, Optional[float]]:
+    """Map mission-specific optical bands to canonical x_spec_* keys."""
     result: dict[str, Optional[float]] = {}
     mission_map = MISSION_BAND_MAP.get(stack.mission, {})
     for obs_key, band_name in mission_map.items():
@@ -110,27 +121,24 @@ def translate_optical_to_canonical(
     return result
 
 
-def translate_sar_to_canonical(
-    stack: RawSARStack,
-) -> dict[str, Optional[float]]:
-    """Map SAR measurements to canonical x_sar_* keys."""
+def translate_sar(stack: RawSARStack) -> dict[str, Optional[float]]:
+    """Map SAR observations to canonical x_sar_* keys."""
     result: dict[str, Optional[float]] = {
         "x_sar_1": None, "x_sar_2": None, "x_sar_3": None,
         "x_sar_4": None, "x_sar_5": None, "x_sar_6": None,
     }
-    if stack.polarisation in ("VV", "HH"):
-        result["x_sar_1"] = stack.backscatter_vv or stack.backscatter_vv
-    if stack.polarisation in ("VH", "HV"):
+    pol = stack.polarisation
+    if pol in ("VV", "HH"):
+        result["x_sar_1"] = stack.backscatter_vv
+    if pol in ("VH", "HV"):
         result["x_sar_2"] = stack.backscatter_vh
     result["x_sar_3"] = stack.coherence
     result["x_sar_4"] = stack.incidence_angle_deg
     return result
 
 
-def translate_thermal_to_canonical(
-    stack: RawThermalStack,
-) -> dict[str, Optional[float]]:
-    """Map thermal measurements to canonical x_therm_* keys."""
+def translate_thermal(stack: RawThermalStack) -> dict[str, Optional[float]]:
+    """Map thermal observations to canonical x_therm_* keys."""
     return {
         "x_therm_1": stack.lst_kelvin,
         "x_therm_2": stack.heat_flow_mw_m2,
@@ -139,24 +147,22 @@ def translate_thermal_to_canonical(
     }
 
 
-def translate_gravity_to_canonical(
+def translate_gravity(
     composite: GravityComposite,
     raw: RawGravityData,
 ) -> dict[str, Optional[float]]:
     """Map gravity decomposition outputs to canonical x_grav_* keys."""
     return {
-        "x_grav_1": composite.g_composite_mgal,       # Composite gravity anomaly
-        "x_grav_2": raw.bouguer_anomaly_mgal,          # Bouguer anomaly
-        "x_grav_3": composite.g_long_mgal,             # Long-wavelength component
-        "x_grav_4": composite.g_medium_mgal,           # Medium-wavelength component
-        "x_grav_5": composite.g_short_mgal,            # Super-resolved short-wavelength
-        "x_grav_6": raw.vertical_gradient_eotvos,      # Vertical gradient tensor Γ_zz
+        "x_grav_1": composite.g_composite_mgal,
+        "x_grav_2": raw.bouguer_anomaly_mgal,
+        "x_grav_3": composite.g_long_mgal,
+        "x_grav_4": composite.g_medium_mgal,
+        "x_grav_5": composite.g_short_mgal,
+        "x_grav_6": raw.vertical_gradient_eotvos,
     }
 
 
-def translate_magnetic_to_canonical(
-    mag: RawMagneticData,
-) -> dict[str, Optional[float]]:
+def translate_magnetic(mag: RawMagneticData) -> dict[str, Optional[float]]:
     """Map magnetic measurements to canonical x_mag_* keys."""
     return {
         "x_mag_1": mag.total_field_nt,
@@ -167,15 +173,10 @@ def translate_magnetic_to_canonical(
     }
 
 
-def translate_offshore_corrected_to_canonical(
-    corrected: CorrectedOffshoreCell,
-) -> dict[str, Optional[float]]:
+def translate_offshore_corrected(corrected: CorrectedOffshoreCell) -> dict[str, Optional[float]]:
     """
-    Map corrected offshore values to canonical x_off_* keys.
-
-    CONSTITUTIONAL RULE: This translation may only be called with a
-    CorrectedOffshoreCell — never with raw bathymetric data.
-    The presence of the CorrectedOffshoreCell object IS the gate proof.
+    Map corrected offshore outputs to canonical x_off_* keys.
+    CONSTITUTIONAL: Only callable with a CorrectedOffshoreCell — never with raw bathy.
     """
     return {
         "x_off_1": corrected.bottom_reflectance,
@@ -189,122 +190,148 @@ def translate_offshore_corrected_to_canonical(
 # Stage 2: Universal feature tensor assembly
 # ---------------------------------------------------------------------------
 
-def build_universal_feature_tensor(
+@dataclass(frozen=True)
+class HarmonisedTensor:
+    """
+    Output of the harmonisation service for one cell.
+    Contains the raw (un-normalised) 42-key feature tensor plus metadata.
+    """
+    cell_id: str
+    scan_id: str
+    environment: str
+    feature_tensor: dict[str, Optional[float]]   # 42 keys, raw values
+    missions_used: tuple[str, ...]
+    correction_quality: Optional[str]             # from CorrectedOffshoreCell if offshore
+    offshore_corrected: bool
+
+    def __post_init__(self) -> None:
+        if len(self.feature_tensor) != 42:
+            raise ValueError(
+                f"HarmonisedTensor must have exactly 42 keys, got {len(self.feature_tensor)}"
+            )
+
+    @property
+    def present_count(self) -> int:
+        return sum(1 for v in self.feature_tensor.values() if v is not None)
+
+    @property
+    def coverage_fraction(self) -> float:
+        return self.present_count / 42
+
+
+def build_harmonised_tensor(
     cell_id: str,
-    optical_stacks: list[RawOpticalStack] | None = None,
-    sar_stacks: list[RawSARStack] | None = None,
-    thermal_stacks: list[RawThermalStack] | None = None,
+    scan_id: str,
+    environment: str,
+    optical_stacks: Optional[list[RawOpticalStack]] = None,
+    sar_stacks: Optional[list[RawSARStack]] = None,
+    thermal_stacks: Optional[list[RawThermalStack]] = None,
     gravity_composite: Optional[GravityComposite] = None,
     raw_gravity: Optional[RawGravityData] = None,
     magnetic: Optional[RawMagneticData] = None,
     corrected_offshore: Optional[CorrectedOffshoreCell] = None,
-    environment: str = "ONSHORE",
     structural_features: Optional[dict[str, Optional[float]]] = None,
     hydro_features: Optional[dict[str, Optional[float]]] = None,
     environmental_modifier: Optional[dict[str, float]] = None,
-) -> dict[str, Optional[float]]:
+) -> HarmonisedTensor:
     """
-    Build the universal 42-key feature tensor for one cell.
+    Build the canonical 42-key raw feature tensor for one cell.
 
-    This is the output of harmonisation — a dict keyed by all 42
-    ObservableVector field names, with raw (un-normalised) values or None.
+    OFFSHORE GATE: Raises OffshoreGateViolation if environment=OFFSHORE
+    and no CorrectedOffshoreCell is provided.
 
-    Multi-mission fusion: when multiple optical or SAR stacks are available,
-    the value with lowest cloud cover / best quality is preferred.
-    Future: ensemble averaging with quality weights.
+    Multi-mission fusion: best-quality optical (lowest cloud cover);
+    SAR stacks merged across polarisations.
 
-    Environmental modifier: applies multiplicative scaling to specific
-    observables based on the commodity's environmental regime. For offshore
-    scans, x_off_* observables receive higher priority (modifier > 1.0);
-    for onshore scans, x_off_* are set to None regardless of inputs.
-
-    Args:
-        corrected_offshore: REQUIRED for offshore cells. Raises OffshoreGateViolation
-                            if environment=OFFSHORE and this is None.
+    Environmental regime modifier: multiplicative scaling on specific keys.
+    Applied AFTER all translations — never before.
 
     Returns:
-        dict[str, Optional[float]] with all 42 keys present.
+        HarmonisedTensor with all 42 keys and coverage metadata.
     """
     if environment == "OFFSHORE" and corrected_offshore is None:
         raise OffshoreGateViolation(
-            f"Cell {cell_id}: build_universal_feature_tensor called with "
-            f"environment=OFFSHORE but no CorrectedOffshoreCell provided. "
-            f"services/offshore.apply_offshore_correction() must be called first."
+            f"Cell {cell_id}: build_harmonised_tensor called with environment=OFFSHORE "
+            f"but no CorrectedOffshoreCell provided. services/offshore.apply_offshore_correction() "
+            f"must be called first."
         )
 
     # Initialise all 42 keys to None
-    tensor: dict[str, Optional[float]] = {
-        "x_spec_1": None, "x_spec_2": None, "x_spec_3": None, "x_spec_4": None,
-        "x_spec_5": None, "x_spec_6": None, "x_spec_7": None, "x_spec_8": None,
-        "x_sar_1": None,  "x_sar_2": None,  "x_sar_3": None,  "x_sar_4": None,
-        "x_sar_5": None,  "x_sar_6": None,
-        "x_therm_1": None, "x_therm_2": None, "x_therm_3": None, "x_therm_4": None,
-        "x_grav_1": None, "x_grav_2": None, "x_grav_3": None, "x_grav_4": None,
-        "x_grav_5": None, "x_grav_6": None,
-        "x_mag_1": None,  "x_mag_2": None,  "x_mag_3": None,  "x_mag_4": None,
-        "x_mag_5": None,
-        "x_struct_1": None, "x_struct_2": None, "x_struct_3": None,
-        "x_struct_4": None, "x_struct_5": None,
-        "x_hydro_1": None, "x_hydro_2": None, "x_hydro_3": None, "x_hydro_4": None,
-        "x_off_1": None,  "x_off_2": None,  "x_off_3": None,  "x_off_4": None,
-    }
+    tensor: dict[str, Optional[float]] = {k: None for k in CANONICAL_KEYS}
+    missions_used: list[str] = []
 
-    # Optical: use best-quality stack (lowest cloud cover)
+    # Optical: best-quality stack
     if optical_stacks:
-        best = min(
-            optical_stacks,
-            key=lambda s: s.cloud_cover_fraction or 1.0,
-        )
-        tensor.update({k: v for k, v in translate_optical_to_canonical(best).items() if v is not None})
+        best = min(optical_stacks, key=lambda s: s.cloud_cover_fraction or 1.0)
+        for k, v in translate_optical(best).items():
+            if v is not None:
+                tensor[k] = v
+        missions_used.append(best.mission)
 
-    # SAR: merge across stacks (different polarisations from same or different missions)
+    # SAR: merge across stacks
     if sar_stacks:
         for sar in sar_stacks:
-            translated = translate_sar_to_canonical(sar)
-            for k, v in translated.items():
+            for k, v in translate_sar(sar).items():
                 if v is not None and tensor.get(k) is None:
                     tensor[k] = v
+            missions_used.append(sar.mission)
 
-    # Thermal
+    # Thermal: best available
     if thermal_stacks:
-        best_thermal = thermal_stacks[0]
-        tensor.update({k: v for k, v in translate_thermal_to_canonical(best_thermal).items() if v is not None})
+        for k, v in translate_thermal(thermal_stacks[0]).items():
+            if v is not None:
+                tensor[k] = v
+        missions_used.append(thermal_stacks[0].mission)
 
     # Gravity
     if gravity_composite and raw_gravity:
-        tensor.update({k: v for k, v in translate_gravity_to_canonical(gravity_composite, raw_gravity).items() if v is not None})
+        for k, v in translate_gravity(gravity_composite, raw_gravity).items():
+            if v is not None:
+                tensor[k] = v
 
     # Magnetic
     if magnetic:
-        tensor.update({k: v for k, v in translate_magnetic_to_canonical(magnetic).items() if v is not None})
+        for k, v in translate_magnetic(magnetic).items():
+            if v is not None:
+                tensor[k] = v
 
-    # Structural (pre-computed from DEM / lineament analysis)
+    # Structural (pre-computed, passed in)
     if structural_features:
-        for k in ("x_struct_1", "x_struct_2", "x_struct_3", "x_struct_4", "x_struct_5"):
+        for k in ("x_struct_1","x_struct_2","x_struct_3","x_struct_4","x_struct_5"):
             if k in structural_features:
                 tensor[k] = structural_features[k]
 
-    # Hydrological (pre-computed from soil moisture / drainage models)
+    # Hydrological (pre-computed, passed in)
     if hydro_features:
-        for k in ("x_hydro_1", "x_hydro_2", "x_hydro_3", "x_hydro_4"):
+        for k in ("x_hydro_1","x_hydro_2","x_hydro_3","x_hydro_4"):
             if k in hydro_features:
                 tensor[k] = hydro_features[k]
 
-    # Offshore: only populate x_off_* for offshore cells with valid correction
+    # Offshore observables: ONLY from CorrectedOffshoreCell
     if environment == "OFFSHORE" and corrected_offshore is not None:
-        tensor.update(translate_offshore_corrected_to_canonical(corrected_offshore))
+        for k, v in translate_offshore_corrected(corrected_offshore).items():
+            tensor[k] = v
+        correction_quality = corrected_offshore.correction_quality
+        offshore_corrected = True
     else:
-        # Onshore cells: offshore observables remain None
-        tensor["x_off_1"] = None
-        tensor["x_off_2"] = None
-        tensor["x_off_3"] = None
-        tensor["x_off_4"] = None
+        # Force x_off_* to None for non-offshore cells
+        for k in ("x_off_1","x_off_2","x_off_3","x_off_4"):
+            tensor[k] = None
+        correction_quality = None
+        offshore_corrected = False
 
-    # Apply environmental regime modifier (multiplicative scaling on specific keys)
+    # Environmental regime modifier (multiplicative)
     if environmental_modifier:
         for key, modifier in environmental_modifier.items():
             if key in tensor and tensor[key] is not None:
                 tensor[key] = tensor[key] * modifier  # type: ignore
 
-    assert len(tensor) == 42, f"Feature tensor must have 42 keys, got {len(tensor)}"
-    return tensor
+    return HarmonisedTensor(
+        cell_id=cell_id,
+        scan_id=scan_id,
+        environment=environment,
+        feature_tensor=dict(tensor),
+        missions_used=tuple(dict.fromkeys(missions_used)),
+        correction_quality=correction_quality,
+        offshore_corrected=offshore_corrected,
+    )
