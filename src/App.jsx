@@ -16,6 +16,7 @@ import GroundTruthAdmin from './pages/GroundTruthAdmin';
 import MapScanBuilder from './pages/MapScanBuilder';
 import MapExport from './pages/MapExport';
 import ReportViewer from './pages/ReportViewer';
+import PortfolioView from './pages/PortfolioView';
 // Add page imports here
 
 const AuthenticatedApp = () => {
@@ -57,6 +58,7 @@ const AuthenticatedApp = () => {
         <Route path="/map-export" element={<MapExport />} />
         <Route path="/reports/:scanId" element={<ReportViewer />} />
         <Route path="/reports" element={<ReportViewer />} />
+        <Route path="/portfolio" element={<PortfolioView />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
