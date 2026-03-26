@@ -1,0 +1,93 @@
+version: "3.9"
+
+# Aurora OSI vNext — Local Development Docker Compose
+# For production deployment, use infra/k8s/ and infra/terraform/
+
+services:
+  # -------------------------------------------------------------------------
+  # API Service
+  # -------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.api
+    ports:
+      - "8000:8000"
+    environment:
+      - AURORA_ENV=development
+      - AURORA_SECRET_KEY=dev-secret-key-replace-in-production-min-32-chars
+      - AURORA_ADMIN_USER=admin
+      - AURORA_ADMIN_PASS=admin_dev_password_123
+      - AURORA_DB_HOST=db
+      - AURORA_DB_PORT=5432
+      - AURORA_DB_NAME=aurora_vnext
+      - AURORA_DB_USER=aurora
+      - AURORA_DB_PASS=aurora_dev_password
+      - AURORA_REDIS_URL=redis://redis:6379/0
+      - AURORA_LOG_FORMAT=text
+      - AURORA_LOG_LEVEL=DEBUG
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app  # Hot reload in development
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --log-level debug
+
+  # -------------------------------------------------------------------------
+  # Worker Service (placeholder — full implementation in Phase L)
+  # -------------------------------------------------------------------------
+  worker:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.worker
+    environment:
+      - AURORA_ENV=development
+      - AURORA_DB_HOST=db
+      - AURORA_REDIS_URL=redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # -------------------------------------------------------------------------
+  # PostgreSQL + PostGIS
+  # -------------------------------------------------------------------------
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: aurora_vnext
+      POSTGRES_USER: aurora
+      POSTGRES_PASSWORD: aurora_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - aurora_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aurora -d aurora_vnext"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------------------------
+  # Redis (session cache + province prior lookup cache)
+  # -------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  aurora_db_data:

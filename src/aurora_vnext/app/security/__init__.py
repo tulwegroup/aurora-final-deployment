@@ -1,0 +1,1 @@
+"""Aurora OSI vNext — Security Layer (stubs — implemented in Phase O)"""

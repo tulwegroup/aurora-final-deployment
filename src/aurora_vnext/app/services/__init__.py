@@ -1,0 +1,1 @@
+"""Aurora OSI vNext — Service Layer (stubs — implemented Phase H/K onwards)"""

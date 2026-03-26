@@ -1,0 +1,1 @@
+"""Aurora OSI vNext — Pipeline / Orchestration Layer (stubs — implemented in Phase L)"""
