@@ -20,6 +20,7 @@ import PortfolioView from './pages/PortfolioView';
 import ClientWorkflow from './pages/ClientWorkflow';
 import PilotDashboard from './pages/PilotDashboard';
 import CommercialPackaging from './pages/CommercialPackaging';
+import DeploymentPanel from './pages/DeploymentPanel';
 // Add page imports here
 
 const AuthenticatedApp = () => {
@@ -65,6 +66,7 @@ const AuthenticatedApp = () => {
         <Route path="/workflow" element={<ClientWorkflow />} />
         <Route path="/pilots" element={<PilotDashboard />} />
         <Route path="/commercial" element={<CommercialPackaging />} />
+        <Route path="/deploy" element={<DeploymentPanel />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
