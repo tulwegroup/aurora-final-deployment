@@ -46,6 +46,7 @@ from app.core.tiering import (
     assign_tiers_batch,
     compute_percentile_thresholds,
 )
+# Constitutional tier vocabulary: TIER_1 / TIER_2 / TIER_3 / BELOW only.
 from app.models.component_scores import (
     CausalResult,
     CausalVetoFlags,
@@ -134,13 +135,12 @@ def _make_bundle(
 
 
 def _make_thresholds(
-    tau_1: float = 0.60,
-    tau_2: float = 0.40,
-    tau_3: float = 0.20,
-    tau_4: float = 0.05,
+    t1: float = 0.60,
+    t2: float = 0.30,
+    t3: float = 0.10,
 ) -> ThresholdSet:
     return ThresholdSet(
-        tau_1=tau_1, tau_2=tau_2, tau_3=tau_3, tau_4=tau_4,
+        t1=t1, t2=t2, t3=t3,
         policy_type=ThresholdPolicyType.FROZEN,
         source_version="v0.1.0",
     )
@@ -336,32 +336,32 @@ class TestScanAggregates:
 class TestThresholdSetValidation:
     def test_valid_thresholds_accepted(self):
         ts = _make_thresholds()
-        assert ts.tau_1 == pytest.approx(0.60)
+        assert ts.t1 == pytest.approx(0.60)
 
     def test_wrong_ordering_raises(self):
         with pytest.raises(ValueError, match="ordering violated"):
-            ThresholdSet(tau_1=0.3, tau_2=0.6, tau_3=0.2, tau_4=0.05,
+            ThresholdSet(t1=0.3, t2=0.6, t3=0.2,
                          policy_type=ThresholdPolicyType.FROZEN, source_version="v1")
 
-    def test_tau_1_above_1_raises(self):
+    def test_t1_above_1_raises(self):
         with pytest.raises(ValueError, match="exceeds 1.0"):
-            ThresholdSet(tau_1=1.5, tau_2=0.7, tau_3=0.4, tau_4=0.1,
+            ThresholdSet(t1=1.5, t2=0.7, t3=0.4,
                          policy_type=ThresholdPolicyType.FROZEN, source_version="v1")
 
-    def test_tau_4_zero_raises(self):
+    def test_t3_zero_raises(self):
         with pytest.raises(ValueError):
-            ThresholdSet(tau_1=0.8, tau_2=0.5, tau_3=0.2, tau_4=0.0,
+            ThresholdSet(t1=0.8, t2=0.5, t3=0.0,
                          policy_type=ThresholdPolicyType.FROZEN, source_version="v1")
 
     def test_override_without_reason_raises(self):
         with pytest.raises(ValueError, match="override_reason"):
-            ThresholdSet(tau_1=0.8, tau_2=0.5, tau_3=0.2, tau_4=0.05,
+            ThresholdSet(t1=0.8, t2=0.5, t3=0.2,
                          policy_type=ThresholdPolicyType.OVERRIDE,
                          source_version="v1",
                          override_reason=None)
 
     def test_override_with_reason_accepted(self):
-        ts = ThresholdSet(tau_1=0.8, tau_2=0.5, tau_3=0.2, tau_4=0.05,
+        ts = ThresholdSet(t1=0.8, t2=0.5, t3=0.2,
                           policy_type=ThresholdPolicyType.OVERRIDE,
                           source_version="v1",
                           override_reason="Expert review of Pilbara AOI")
@@ -373,37 +373,41 @@ class TestThresholdSetValidation:
 # ===========================================================================
 
 class TestTierAssignment:
-    def test_tier_1_at_tau_1(self):
+    def test_tier_1_at_t1(self):
         ts = _make_thresholds()
-        assert assign_tier(0.60, ts) == Tier.TIER_1_CONFIRMED
+        assert assign_tier(0.60, ts) == Tier.TIER_1
 
-    def test_tier_1_above_tau_1(self):
+    def test_tier_1_above_t1(self):
         ts = _make_thresholds()
-        assert assign_tier(0.95, ts) == Tier.TIER_1_CONFIRMED
+        assert assign_tier(0.95, ts) == Tier.TIER_1
 
-    def test_tier_2_just_below_tau_1(self):
+    def test_tier_2_just_below_t1(self):
         ts = _make_thresholds()
-        assert assign_tier(0.59, ts) == Tier.TIER_2_HIGH
+        assert assign_tier(0.59, ts) == Tier.TIER_2
+
+    def test_tier_2_at_t2(self):
+        ts = _make_thresholds()
+        assert assign_tier(0.30, ts) == Tier.TIER_2
 
     def test_tier_3_assignment(self):
         ts = _make_thresholds()
-        assert assign_tier(0.25, ts) == Tier.TIER_3_MODERATE
+        assert assign_tier(0.15, ts) == Tier.TIER_3
 
-    def test_tier_4_assignment(self):
+    def test_tier_3_at_t3(self):
         ts = _make_thresholds()
-        assert assign_tier(0.10, ts) == Tier.TIER_4_LOW
+        assert assign_tier(0.10, ts) == Tier.TIER_3
 
-    def test_tier_5_background(self):
+    def test_below_threshold(self):
         ts = _make_thresholds()
-        assert assign_tier(0.01, ts) == Tier.TIER_5_BACKGROUND
+        assert assign_tier(0.05, ts) == Tier.BELOW
 
-    def test_tier_5_at_zero(self):
+    def test_below_at_zero(self):
         ts = _make_thresholds()
-        assert assign_tier(0.0, ts) == Tier.TIER_5_BACKGROUND
+        assert assign_tier(0.0, ts) == Tier.BELOW
 
     def test_tier_1_at_exactly_1(self):
         ts = _make_thresholds()
-        assert assign_tier(1.0, ts) == Tier.TIER_1_CONFIRMED
+        assert assign_tier(1.0, ts) == Tier.TIER_1
 
     def test_out_of_range_raises(self):
         ts = _make_thresholds()
@@ -414,14 +418,14 @@ class TestTierAssignment:
         """Same inputs always produce same tier."""
         ts = _make_thresholds()
         for _ in range(5):
-            assert assign_tier(0.50, ts) == Tier.TIER_2_HIGH
+            assert assign_tier(0.40, ts) == Tier.TIER_2
 
     def test_tier_invariant_to_threshold_policy_type(self):
-        """Tier assignment depends only on score and τ values, not policy type."""
+        """Tier assignment depends only on score and t values, not policy type."""
         ts_frozen = _make_thresholds()
-        ts_pct = ThresholdSet(tau_1=0.60, tau_2=0.40, tau_3=0.20, tau_4=0.05,
+        ts_pct = ThresholdSet(t1=0.60, t2=0.30, t3=0.10,
                               policy_type=ThresholdPolicyType.PERCENTILE, source_version="v")
-        assert assign_tier(0.55, ts_frozen) == assign_tier(0.55, ts_pct)
+        assert assign_tier(0.45, ts_frozen) == assign_tier(0.45, ts_pct)
 
 
 # ===========================================================================
@@ -433,23 +437,23 @@ class TestPercentileThresholds:
         scores = [float(i) / 100 for i in range(100)]
         ts = compute_percentile_thresholds(scores)
         assert ts.policy_type == ThresholdPolicyType.PERCENTILE
-        assert ts.tau_1 > ts.tau_2 > ts.tau_3 > ts.tau_4 > 0
+        assert ts.t1 > ts.t2 > ts.t3 > 0
 
     def test_degenerate_scores_repaired(self):
         """All-zero scores must not produce invalid thresholds."""
         scores = [0.0] * 20
         ts = compute_percentile_thresholds(scores)
-        assert ts.tau_1 > ts.tau_2 > ts.tau_3 > ts.tau_4 > 0
+        assert ts.t1 > ts.t2 > ts.t3 > 0
 
     def test_insufficient_scores_raises(self):
         with pytest.raises(ValueError):
-            compute_percentile_thresholds([0.5, 0.6, 0.7])
+            compute_percentile_thresholds([0.5, 0.6])
 
     def test_thresholds_within_0_1(self):
         scores = [0.1, 0.3, 0.5, 0.7, 0.9, 0.4, 0.6, 0.8, 0.2, 0.95]
         ts = compute_percentile_thresholds(scores)
-        for tau in (ts.tau_1, ts.tau_2, ts.tau_3, ts.tau_4):
-            assert 0.0 < tau <= 1.0
+        for t in (ts.t1, ts.t2, ts.t3):
+            assert 0.0 < t <= 1.0
 
 
 # ===========================================================================
@@ -458,15 +462,14 @@ class TestPercentileThresholds:
 
 class TestBatchTierAssignment:
     def test_counts_sum_to_total(self):
-        scores = [0.0, 0.1, 0.25, 0.45, 0.65, 0.85, 0.95]
+        scores = [0.0, 0.05, 0.15, 0.45, 0.65, 0.85, 0.95]
         ts = _make_thresholds()
         _, counts = assign_tiers_batch(scores, ts)
         assert counts.total == len(scores)
-        assert (counts.tier_1 + counts.tier_2 + counts.tier_3
-                + counts.tier_4 + counts.tier_5) == len(scores)
+        assert (counts.tier_1 + counts.tier_2 + counts.tier_3 + counts.below) == len(scores)
 
     def test_fractions_sum_to_1(self):
-        scores = [0.1, 0.3, 0.5, 0.7, 0.9]
+        scores = [0.05, 0.15, 0.45, 0.65, 0.90]
         ts = _make_thresholds()
         _, counts = assign_tiers_batch(scores, ts)
         assert sum(counts.as_fractions().values()) == pytest.approx(1.0)
@@ -477,6 +480,14 @@ class TestBatchTierAssignment:
         _, counts = assign_tiers_batch(scores, ts)
         assert counts.tier_1 == 3
         assert counts.tier_2 == 0
+        assert counts.below == 0
+
+    def test_all_below_counts(self):
+        scores = [0.01, 0.02, 0.03]
+        ts = _make_thresholds()
+        _, counts = assign_tiers_batch(scores, ts)
+        assert counts.below == 3
+        assert counts.tier_1 == 0
 
 
 # ===========================================================================
@@ -649,7 +660,8 @@ class TestSyntheticMultiCellScan:
     """
 
     def setup_method(self):
-        self.ts = _make_thresholds(tau_1=0.60, tau_2=0.30, tau_3=0.15, tau_4=0.05)
+        # Constitutional threshold vocabulary: t1/t2/t3 only
+        self.ts = _make_thresholds(t1=0.60, t2=0.30, t3=0.10)
 
         bundles = [
             _make_bundle(f"c{i}", e_tilde=0.90, c_i=0.85, psi_i=0.95,
@@ -680,12 +692,12 @@ class TestSyntheticMultiCellScan:
     def test_high_acif_cells_tier_1_or_2(self):
         for i in range(3):
             tier = self.tiers[i]
-            assert tier in (Tier.TIER_1_CONFIRMED, Tier.TIER_2_HIGH), \
+            assert tier in (Tier.TIER_1, Tier.TIER_2), \
                 f"Cell {i} ACIF={self.scores[i]:.3f} → unexpected tier {tier}"
 
-    def test_vetoed_cells_are_tier_5(self):
-        assert self.tiers[8] == Tier.TIER_5_BACKGROUND
-        assert self.tiers[9] == Tier.TIER_5_BACKGROUND
+    def test_vetoed_cells_are_below(self):
+        assert self.tiers[8] == Tier.BELOW
+        assert self.tiers[9] == Tier.BELOW
 
     def test_scan_aggregates_populated(self):
         assert self.aggregates.n_cells == 10
