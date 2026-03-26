@@ -28,6 +28,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+
+# ---------------------------------------------------------------------------
+# Cost model version — Phase AG governance requirement
+# All pricing constants below are auditable under this version string.
+# Cost computations are independent of ACIF, tiers, and calibration outputs.
+# ---------------------------------------------------------------------------
+COST_MODEL_VERSION = "cm-1.0.0"
 from typing import Optional
 
 

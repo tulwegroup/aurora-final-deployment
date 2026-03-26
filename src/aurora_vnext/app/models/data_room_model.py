@@ -1,119 +1,177 @@
 """
-Aurora OSI vNext — Data Room Export Models
-Phase R §R.1
+Aurora OSI vNext — Data Room Model
+Phase AH §AH.1
 
-Defines the manifest schema for a signed data-room export package.
+Defines all data-room artifacts, package structure, delivery links,
+access log entries, and watermark metadata.
 
-A data room package is a ZIP archive containing:
-  canonical_scan.json        — CanonicalScan record (verbatim)
-  geojson_tier_layer.geojson — GeoJSON FeatureCollection of scan cells
-  twin_voxels.json           — DigitalTwinVoxel records (verbatim)
-  audit_trail.jsonl          — Append-only audit log records for this scan_id
-  manifest.json              — This model, including SHA-256 hashes of all above
-
-CONSTITUTIONAL RULES — Phase R:
-  Rule 1: No scientific fields are added, derived, or recomputed in this module.
-  Rule 2: Manifest values are sourced from stored canonical records only.
-  Rule 3: SHA-256 hashes verify artifact integrity — they are not scientific values.
-  Rule 4: version_registry in manifest is copied verbatim from CanonicalScan.
+CONSTITUTIONAL RULES:
+  Rule 1: All artifacts are verbatim canonical projections.
+          No recomputation, rescoring, or transformation occurs during packaging.
+  Rule 2: Every artifact carries a sha256_hash computed at package-time.
+          Hash verification proves the artifact has not been modified post-package.
+  Rule 3: DeliveryLink is time-limited — expires_at is mandatory.
+  Rule 4: Every download is logged in DataRoomAccessLog (append-only).
   Rule 5: No import from core/*.
+  Rule 6: cost_model_version is mandatory on any artifact derived from cost estimates.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
+from dataclasses import dataclass, field
+from enum import Enum
 from typing import Optional
-from pydantic import BaseModel, Field
 
 
-class ArtifactRecord(BaseModel):
-    """One file artifact in the data room package."""
-    filename: str
-    sha256: str                          # hex digest of file contents
-    size_bytes: int
-    content_type: str                    # MIME type
-    description: str
-    model_config = {"frozen": True}
+class ArtifactType(str, Enum):
+    CANONICAL_SCAN_JSON   = "canonical_scan_json"
+    GEOJSON_LAYER         = "geojson_layer"
+    KML_EXPORT            = "kml_export"
+    KMZ_EXPORT            = "kmz_export"
+    DIGITAL_TWIN_DATASET  = "digital_twin_dataset"
+    GEOLOGICAL_REPORT     = "geological_report"
+    AUDIT_TRAIL_BUNDLE    = "audit_trail_bundle"
+    COST_ESTIMATE         = "cost_estimate"
+    VALIDATION_SUMMARY    = "validation_summary"
 
 
-class ScanLineage(BaseModel):
-    """Lineage chain for reprocessed scans."""
-    scan_id: str
-    parent_scan_id: Optional[str]        # None if original
-    migration_class: Optional[str]       # A / B / C / None (native scan)
-    migration_notes: Optional[str]
-    reprocess_reason: Optional[str]
-    model_config = {"frozen": True}
+class DeliveryLinkStatus(str, Enum):
+    ACTIVE   = "active"
+    EXPIRED  = "expired"
+    REVOKED  = "revoked"
+    CONSUMED = "consumed"   # single-use links
 
 
-class DataRoomManifest(BaseModel):
+@dataclass(frozen=True)
+class DataRoomArtifact:
     """
-    Export manifest for one data room package.
+    One artifact in a data-room package.
 
-    Every field is sourced from stored canonical records — none are derived.
-    SHA-256 hashes are computed over the serialised artifact bytes at export time.
-    version_registry is copied verbatim from CanonicalScan.version_registry.
-
-    PROOF: No scientific constant, threshold, or formula appears in this schema.
-    Numeric fields: size_bytes (file size), sha256 (hash string), export_duration_ms
-    (infrastructure timing). None are physics values.
+    PROOF OF NO RECOMPUTATION:
+      content_source_ref is the canonical storage path or report_id.
+      The artifact content is a verbatim read from that source.
+      sha256_hash is computed from the bytes read — not from any formula.
     """
-    # Package identity
-    manifest_version:  str = "1.0"
-    package_id:        str                    # UUID generated at export time
-    created_at:        str                    # ISO timestamp
-    created_by_email:  str
-
-    # Scan identity — verbatim from CanonicalScan
-    scan_id:           str
-    commodity:         Optional[str]
-    scan_tier:         Optional[str]
-    environment:       Optional[str]
-    scan_completed_at: Optional[str]          # CanonicalScan.completed_at — verbatim
-
-    # Version registry — verbatim copy from CanonicalScan.version_registry
-    version_registry:  Optional[dict]
-
-    # Lineage
-    lineage:           ScanLineage
-
-    # Artifact inventory with integrity hashes
-    artifacts:         list[ArtifactRecord]
-
-    # Package integrity — SHA-256 of manifest.json itself (computed last)
-    manifest_sha256:   Optional[str] = None   # filled after manifest serialisation
-
-    # Infrastructure metadata
-    export_duration_ms: Optional[int] = None
-    aurora_env:         Optional[str] = None
-
-    model_config = {"frozen": False}          # manifest_sha256 filled after init
+    artifact_id:         str
+    artifact_type:       ArtifactType
+    filename:            str
+    content_source_ref:  str        # storage path / entity id of the canonical source
+    sha256_hash:         str        # SHA-256 of the artifact bytes
+    size_bytes:          int
+    created_at:          str        # ISO 8601 UTC
+    is_verbatim:         bool       # must be True for all artifacts
+    watermark_id:        Optional[str] = None   # set if watermarking applied
+    cost_model_version:  Optional[str] = None   # set on COST_ESTIMATE artifacts
 
 
-class MigrationRecord(BaseModel):
+@dataclass(frozen=True)
+class DataRoomPackage:
     """
-    One record in the migration execution log.
-    Written to DB and included in migration completion proof.
+    A complete, immutable data-room package for one scan delivery.
+
+    package_hash: SHA-256 of the concatenated artifact hashes (sorted by artifact_id).
+                  Proves the entire package is unchanged.
     """
-    scan_id:           str
-    migration_class:   str               # A / B / C
-    source_file_line:  Optional[int]
-    missing_fields:    list[str]
-    db_status:         str               # written / skipped / error
-    error_message:     Optional[str]
-    canonical_status:  str               # COMPLETED / MIGRATION_STUB
-    executed_at:       str               # ISO timestamp
-    dry_run:           bool
-    model_config = {"frozen": True}
+    package_id:           str
+    scan_id:              str
+    recipient_id:         str          # user or organisation ID
+    created_at:           str
+    artifacts:            tuple[DataRoomArtifact, ...]
+    package_hash:         str          # hash of all artifact hashes concatenated (sorted)
+    pipeline_version:     str          # from VersionRegistry
+    report_engine_version: str
+    calibration_version_id: str
+    cost_model_version:   str          # from scan_cost_model.COST_MODEL_VERSION
+    notes:                str = ""
+
+    def artifact(self, artifact_type: ArtifactType) -> Optional[DataRoomArtifact]:
+        for a in self.artifacts:
+            if a.artifact_type == artifact_type:
+                return a
+        return None
+
+    def verify_integrity(self) -> bool:
+        """
+        Recompute package_hash from artifact hashes and compare.
+        Returns True if package is intact.
+        """
+        import hashlib
+        sorted_hashes = sorted(a.sha256_hash for a in self.artifacts)
+        computed = hashlib.sha256("".join(sorted_hashes).encode()).hexdigest()
+        return computed == self.package_hash
 
 
-class MigrationRunReport(BaseModel):
-    """Full report for one migration execution run."""
-    run_id:         str
-    run_at:         str
-    dry_run:        bool
-    input_file:     str
-    counts:         dict[str, int]       # {A, B, C, skipped, error}
-    records:        list[MigrationRecord]
-    proof_summary:  dict                 # filled by completion proof generator
-    model_config = {"frozen": True}
+@dataclass(frozen=True)
+class WatermarkMetadata:
+    """
+    Watermark applied to a delivered artifact.
+    Watermarking is non-destructive to the canonical data — it adds a visible
+    recipient label to PDF/HTML reports and a metadata field to JSON/KML.
+    """
+    watermark_id:   str
+    recipient_id:   str
+    recipient_name: str
+    applied_at:     str
+    artifact_id:    str
+    method:         str    # "metadata_field" | "pdf_header" | "json_wrapper"
+
+
+@dataclass(frozen=True)
+class DeliveryLink:
+    """
+    A time-limited signed URL token for secure package delivery.
+
+    SECURITY:
+      - expires_at is mandatory and enforced at access time.
+      - token is a cryptographically random 256-bit value (hex-encoded).
+      - max_downloads = None means unlimited within the expiry window.
+      - status transitions: ACTIVE → EXPIRED | REVOKED | CONSUMED.
+    """
+    link_id:       str
+    package_id:    str
+    recipient_id:  str
+    token:         str        # 64-char hex (256-bit random)
+    created_at:    str
+    expires_at:    str        # ISO 8601 UTC — mandatory
+    max_downloads: Optional[int]   # None = unlimited
+    downloads_used: int
+    status:        DeliveryLinkStatus
+    ip_whitelist:  tuple[str, ...] = ()   # empty = any IP allowed
+
+
+@dataclass(frozen=True)
+class DataRoomAccessLog:
+    """
+    Append-only access log entry. Written on every download attempt.
+    """
+    log_id:        str
+    link_id:       str
+    package_id:    str
+    recipient_id:  str
+    accessed_at:   str        # ISO 8601 UTC
+    ip_address:    str
+    user_agent:    str
+    artifact_type: Optional[ArtifactType]
+    outcome:       str        # "allowed" | "expired" | "revoked" | "ip_blocked" | "limit_reached"
+    bytes_served:  int        # 0 if access denied
+
+
+def new_package_id() -> str:
+    import uuid
+    return f"drp-{uuid.uuid5(uuid.NAMESPACE_DNS, str(uuid.uuid4()))}"
+
+
+def new_link_id() -> str:
+    import uuid
+    return f"drl-{uuid.uuid5(uuid.NAMESPACE_DNS, str(uuid.uuid4()))}"
+
+
+def new_log_id() -> str:
+    import uuid
+    return f"dal-{uuid.uuid5(uuid.NAMESPACE_DNS, str(uuid.uuid4()))}"
+
+
+def generate_delivery_token() -> str:
+    """Generate a 256-bit cryptographically secure token (64-char hex)."""
+    import secrets
+    return secrets.token_hex(32)
