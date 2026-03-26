@@ -4,24 +4,23 @@
  */
 
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { AlertTriangle, Cloud, Loader2, CheckCircle, Copy } from 'lucide-react';
+import { AlertTriangle, Cloud, Loader2, CheckCircle, Copy, HelpCircle } from 'lucide-react';
 
 export default function DeploymentPanel() {
-  const [step, setStep] = useState('form'); // form | generating | success | error
-  const [script, setScript] = useState(null);
+  const navigate = useNavigate();
+  const [step, setStep] = useState('ready'); // ready | deploying | success | error
+  const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
-  // Form state
+  // Minimal form - only takes region/environment/domain
   const [form, setForm] = useState({
     aws_region: 'us-east-1',
     environment: 'production',
     domain_name: 'api.aurora-osi.io',
-    db_password: '',
-    certificate_arn: '',
-    gee_service_account_key: '',
   });
 
   const handleInputChange = (e) => {
@@ -30,14 +29,14 @@ export default function DeploymentPanel() {
   };
 
   const handleDeploy = async () => {
-    setStep('generating');
+    setStep('deploying');
     setError(null);
 
     try {
       const response = await base44.functions.invoke('deployToAWS', form);
       
       if (response.data.status === 'success') {
-        setScript(response.data);
+        setResult(response.data);
         setStep('success');
       } else {
         setError(response.data.error || 'Deployment failed');
@@ -76,29 +75,67 @@ export default function DeploymentPanel() {
         </div>
       </div>
 
+      {/* Ready state - setup guide */}
+      {step === 'ready' && (
+        <Card className="border-amber-300 bg-amber-50">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2 text-amber-900">
+              <HelpCircle className="w-5 h-5" /> Setup Required
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 text-amber-900">
+            <p className="text-sm">
+              Before deploying, you need to gather 3 parameters from AWS and store them in dashboard secrets:
+            </p>
+            <ul className="space-y-2 text-sm ml-4 list-disc">
+              <li><code className="bg-white px-2 py-0.5 rounded text-xs">AURORA_DB_PASSWORD</code> - RDS database password</li>
+              <li><code className="bg-white px-2 py-0.5 rounded text-xs">AURORA_CERTIFICATE_ARN</code> - ACM SSL certificate</li>
+              <li><code className="bg-white px-2 py-0.5 rounded text-xs">AURORA_GEE_SERVICE_ACCOUNT_KEY</code> - Google Earth Engine credentials</li>
+            </ul>
+            <Button
+              onClick={() => navigate('/setup-guide')}
+              className="w-full gap-2 bg-amber-700 hover:bg-amber-800"
+            >
+              <HelpCircle className="w-4 h-4" /> View Step-by-Step Setup Guide
+            </Button>
+            <p className="text-xs text-amber-800/70">
+              Once you've added those secrets to the dashboard, return here to deploy.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Form */}
       {step === 'form' && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Deployment Configuration</CardTitle>
+            <CardTitle className="text-base">Ready to Deploy</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Credentials Note */}
-            <div className="bg-blue-50 border border-blue-200 rounded p-3 text-xs text-blue-800">
-              ✓ AWS credentials loaded from dashboard secrets (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+            {/* Credentials Status */}
+            <div className="bg-green-50 border border-green-200 rounded p-3 text-xs text-green-800 space-y-1">
+              <p>✓ AWS_ACCESS_KEY_ID configured</p>
+              <p>✓ AWS_SECRET_ACCESS_KEY configured</p>
+              <p>✓ AURORA_DB_PASSWORD configured</p>
+              <p>✓ AURORA_CERTIFICATE_ARN configured</p>
+              <p>✓ AURORA_GEE_SERVICE_ACCOUNT_KEY configured</p>
             </div>
 
             {/* AWS Region */}
             <div>
               <label className="text-sm font-medium">AWS Region</label>
-              <input
-                type="text"
+              <select
                 name="aws_region"
                 value={form.aws_region}
                 onChange={handleInputChange}
                 className="w-full mt-1 px-3 py-2 border rounded-md text-sm bg-background"
-              />
-              <p className="text-xs text-muted-foreground mt-1">e.g., us-east-1, eu-west-1</p>
+              >
+                <option value="us-east-1">US East (N. Virginia)</option>
+                <option value="us-west-2">US West (Oregon)</option>
+                <option value="eu-west-1">EU (Ireland)</option>
+                <option value="eu-central-1">EU (Frankfurt)</option>
+                <option value="ap-southeast-1">Asia Pacific (Singapore)</option>
+              </select>
             </div>
 
             {/* Environment */}
@@ -129,76 +166,34 @@ export default function DeploymentPanel() {
               <p className="text-xs text-muted-foreground mt-1">e.g., api.aurora-osi.io</p>
             </div>
 
-            {/* DB Password */}
-            <div>
-              <label className="text-sm font-medium">RDS Master Password</label>
-              <input
-                type="password"
-                name="db_password"
-                value={form.db_password}
-                onChange={handleInputChange}
-                placeholder="••••••••"
-                className="w-full mt-1 px-3 py-2 border rounded-md text-sm bg-background"
-              />
-              <p className="text-xs text-muted-foreground mt-1">Strong password required (min 8 chars, special chars recommended)</p>
-            </div>
-
-            {/* Certificate ARN */}
-            <div>
-              <label className="text-sm font-medium">ACM Certificate ARN</label>
-              <input
-                type="text"
-                name="certificate_arn"
-                value={form.certificate_arn}
-                onChange={handleInputChange}
-                placeholder="arn:aws:acm:..."
-                className="w-full mt-1 px-3 py-2 border rounded-md text-sm bg-background font-mono text-xs"
-              />
-              <p className="text-xs text-muted-foreground mt-1">Get from AWS Certificate Manager console</p>
-            </div>
-
-            {/* GEE Service Account Key */}
-            <div>
-              <label className="text-sm font-medium">GEE Service Account Key (JSON)</label>
-              <textarea
-                name="gee_service_account_key"
-                value={form.gee_service_account_key}
-                onChange={handleInputChange}
-                placeholder='{"type":"service_account",...}'
-                rows={6}
-                className="w-full mt-1 px-3 py-2 border rounded-md text-sm bg-background font-mono text-xs"
-              />
-              <p className="text-xs text-muted-foreground mt-1">Full GEE service account JSON from console.cloud.google.com</p>
-            </div>
-
             {/* Action */}
             <div className="flex gap-3 pt-4">
               <Button
                 onClick={handleDeploy}
-                disabled={!form.db_password || !form.certificate_arn || !form.gee_service_account_key}
-                className="gap-2"
+                className="gap-2 flex-1"
               >
                 <Cloud className="w-4 h-4" />
                 Deploy to AWS
               </Button>
               <p className="text-xs text-muted-foreground self-center">
-                Estimated time: 15–25 minutes
+                15–25 min
               </p>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Generating */}
-      {step === 'generating' && (
+      {/* Deploying */}
+      {step === 'deploying' && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin" /> Generating Script
+              <Loader2 className="w-4 h-4 animate-spin" /> Deploying to AWS
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            <p className="text-sm text-muted-foreground">Creating deployment shell script...</p>
+            <p className="text-sm text-muted-foreground">Provisioning infrastructure...</p>
+            <p className="text-xs text-muted-foreground">This typically takes 15-25 minutes. You'll receive a Stack ID and monitoring URL once initiated.</p>
           </CardContent>
         </Card>
       )}
@@ -215,30 +210,32 @@ export default function DeploymentPanel() {
             <div className="space-y-3">
               <p className="text-sm font-medium">Aurora OSI deployment initiated:</p>
               <div className="space-y-2 text-sm">
-                <div><strong>Stack ID:</strong> <code className="bg-white px-2 py-1 rounded text-xs text-slate-700">{script?.stackId?.slice(0, 50)}...</code></div>
-                <div><strong>Region:</strong> {script?.region}</div>
-                <div><strong>Estimated Time:</strong> {script?.estimatedTime}</div>
+                <div><strong>Stack ID:</strong> <code className="bg-white px-2 py-1 rounded text-xs text-slate-700">{result?.stackId?.slice(0, 50)}...</code></div>
+                <div><strong>Stack Name:</strong> {result?.stackName}</div>
+                <div><strong>Region:</strong> {result?.region}</div>
+                <div><strong>Status:</strong> {result?.action}</div>
+                <div><strong>Estimated Time:</strong> {result?.estimatedTime}</div>
               </div>
-              {script?.nextSteps && (
+              {result?.nextSteps && (
                 <div className="space-y-1">
                   <p className="font-medium text-xs">Next steps:</p>
                   <ul className="text-xs space-y-1">
-                    {script.nextSteps.map((step, i) => (
+                    {result.nextSteps.map((step, i) => (
                       <li key={i} className="flex gap-2">• {step}</li>
                     ))}
                   </ul>
                 </div>
               )}
             </div>
-            <a href={script?.consoleUrl} target="_blank" rel="noopener noreferrer" className="block">
+            <a href={result?.consoleUrl} target="_blank" rel="noopener noreferrer" className="block">
               <Button className="w-full gap-2 bg-emerald-700 hover:bg-emerald-800">
                 <Cloud className="w-4 h-4" /> Monitor in AWS Console
               </Button>
             </a>
             <Button
               onClick={() => {
-                setStep('form');
-                setScript(null);
+                setStep('ready');
+                setResult(null);
               }}
               variant="outline"
               className="w-full"
@@ -254,11 +251,21 @@ export default function DeploymentPanel() {
         <Card className="border-red-300 bg-red-50">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2 text-red-900">
-              <AlertTriangle className="w-5 h-5" /> Error
+              <AlertTriangle className="w-5 h-5" /> Deployment Error
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-red-900">
-            <p className="text-sm font-medium">{error}</p>
+            <p className="text-sm">{error}</p>
+            {error?.includes('AURORA_') && (
+              <div className="text-xs bg-white/50 rounded p-2">
+                <strong>Missing secret?</strong> Make sure all three parameters are set in Dashboard → Settings:
+                <ul className="mt-1 ml-4 list-disc space-y-1">
+                  <li>AURORA_DB_PASSWORD</li>
+                  <li>AURORA_CERTIFICATE_ARN</li>
+                  <li>AURORA_GEE_SERVICE_ACCOUNT_KEY</li>
+                </ul>
+              </div>
+            )}
             <div className="flex gap-2">
               <Button
                 onClick={() => setStep('form')}
@@ -268,14 +275,11 @@ export default function DeploymentPanel() {
                 Try Again
               </Button>
               <Button
-                onClick={() => {
-                    setStep('form');
-                    setError(null);
-                  }}
+                onClick={() => navigate('/setup-guide')}
                 variant="outline"
                 className="flex-1"
               >
-                Reset
+                View Setup Guide
               </Button>
             </div>
           </CardContent>

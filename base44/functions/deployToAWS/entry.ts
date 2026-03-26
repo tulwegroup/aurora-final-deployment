@@ -60,10 +60,20 @@ Deno.serve(async (req) => {
 
     const awsAccessKeyId = Deno.env.get('AWS_ACCESS_KEY_ID');
     const awsSecretAccessKey = Deno.env.get('AWS_SECRET_ACCESS_KEY');
+    const dbPassword = Deno.env.get('AURORA_DB_PASSWORD');
+    const certificateArn = Deno.env.get('AURORA_CERTIFICATE_ARN');
+    const geeServiceAccountKey = Deno.env.get('AURORA_GEE_SERVICE_ACCOUNT_KEY');
 
     if (!awsAccessKeyId || !awsSecretAccessKey) {
       return Response.json(
-        { error: 'AWS credentials not configured in dashboard secrets.' },
+        { error: 'AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY required in dashboard secrets' },
+        { status: 400 }
+      );
+    }
+
+    if (!dbPassword || !certificateArn || !geeServiceAccountKey) {
+      return Response.json(
+        { error: 'Missing deployment secrets: AURORA_DB_PASSWORD, AURORA_CERTIFICATE_ARN, AURORA_GEE_SERVICE_ACCOUNT_KEY' },
         { status: 400 }
       );
     }
@@ -72,21 +82,11 @@ Deno.serve(async (req) => {
     const {
       aws_region = 'us-east-1',
       environment = 'production',
-      db_password,
-      certificate_arn,
       domain_name = 'api.aurora-osi.io',
-      gee_service_account_key,
     } = body;
 
-    if (!db_password || !certificate_arn || !gee_service_account_key) {
-      return Response.json(
-        { error: 'Missing required parameters' },
-        { status: 400 }
-      );
-    }
-
     const stackName = `aurora-osi-${environment}`;
-    const geeKeyBase64 = btoa(gee_service_account_key);
+    const geeKeyBase64 = btoa(geeServiceAccountKey);
 
     // Fetch CloudFormation template
     const templateUrl = 'https://raw.githubusercontent.com/aurora-ai/aurora-vnext/main/infra/cloudformation/aurora-production.yaml';
@@ -101,11 +101,11 @@ Deno.serve(async (req) => {
     params.append('Parameters.member.1.ParameterKey', 'Environment');
     params.append('Parameters.member.1.ParameterValue', environment);
     params.append('Parameters.member.2.ParameterKey', 'DBPassword');
-    params.append('Parameters.member.2.ParameterValue', db_password);
+    params.append('Parameters.member.2.ParameterValue', dbPassword);
     params.append('Parameters.member.3.ParameterKey', 'DomainName');
     params.append('Parameters.member.3.ParameterValue', domain_name);
     params.append('Parameters.member.4.ParameterKey', 'CertificateArn');
-    params.append('Parameters.member.4.ParameterValue', certificate_arn);
+    params.append('Parameters.member.4.ParameterValue', certificateArn);
     params.append('Parameters.member.5.ParameterKey', 'GEEServiceAccountKey');
     params.append('Parameters.member.5.ParameterValue', geeKeyBase64);
     params.append('Capabilities.member.1', 'CAPABILITY_NAMED_IAM');
