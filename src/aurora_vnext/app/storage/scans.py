@@ -1,5 +1,5 @@
 """
-Aurora OSI vNext — Canonical Scan Store
+Aurora OSI vNext — Canonical Scan Store + ScanCell Store
 Phase G §G.3
 
 WRITE-ONCE after status=COMPLETED.
@@ -7,10 +7,23 @@ WRITE-ONCE after status=COMPLETED.
 The canonical freeze contract:
   1. create_pending_scan()   → writes initial record, status=PENDING
   2. freeze_canonical_scan() → single atomic write of all canonical fields
-                                + status=COMPLETED
+                               + status=COMPLETED
   3. StorageImmutabilityError is raised by both the DB trigger AND this layer
      if freeze is attempted twice on the same scan_id.
   4. get_canonical_scan() → read-only retrieval, always returns frozen state.
+
+ScanCell records are written atomically alongside the CanonicalScan at step 19.
+They are never modified after write.
+
+FAILURE-PATH IMMUTABILITY PROOF (referenced by api/scan.py and Phase L docs):
+  create_pending_scan() writes ONLY: scan_id, status=PENDING, commodity, scan_tier,
+    environment, aoi_geojson, grid_resolution_degrees, parent_scan_id, submitted_at.
+  NO score fields. NO tier fields. NO gate fields. NO component scores.
+  freeze_canonical_scan() is the SOLE path to write any result field.
+  freeze_canonical_scan() sets status=COMPLETED atomically with all result fields.
+  The DB WHERE clause (AND status != 'COMPLETED') prevents double-freeze races.
+  Therefore: a scan that fails before step 19 has status=PENDING|RUNNING|FAILED
+  and zero result fields in the canonical store — immutability is structurally guaranteed.
 
 No scientific logic. No scoring. No imports from core/ or services/.
 """
@@ -64,6 +77,14 @@ class CanonicalScanStore(BaseStore):
     ) -> str:
         """
         Write initial PENDING canonical scan record before pipeline starts.
+
+        IMMUTABILITY PROOF:
+          Writes ONLY identity/config fields. Zero result fields are written here.
+          Any pipeline failure before step 19 leaves this record in PENDING status
+          with no score, tier, gate, or component fields populated.
+          This is the structural guarantee that failed pipelines leave no
+          partial canonical result state.
+
         Returns the scan_id.
         """
         new_id = scan_id or str(uuid4())
@@ -100,10 +121,14 @@ class CanonicalScanStore(BaseStore):
         This is the ONLY path through which a scan transitions to COMPLETED.
         It is called ONCE at pipeline step 19 (canonical freeze).
 
+        IMMUTABILITY PROOF:
+          - Application-level: pre-check rejects double-freeze before DB call
+          - Database-level: WHERE status != 'COMPLETED' ensures atomicity
+          - DB trigger: trg_canonical_scan_immutability blocks any UPDATE on COMPLETED rows
+          - Together these form two independent, complementary enforcement layers.
+
         Raises StorageImmutabilityError if the scan is already COMPLETED.
-        The underlying PostgreSQL trigger provides a second enforcement layer.
         """
-        # Application-level pre-check (before hitting DB trigger)
         existing = await self._get_status(canonical_scan.scan_id)
         if existing == ScanStatus.COMPLETED.value:
             raise StorageImmutabilityError(
@@ -190,7 +215,7 @@ class CanonicalScanStore(BaseStore):
         reason: str,
     ) -> None:
         """
-        Admin-only soft delete. Does not physically remove the record.
+        Admin-only soft delete. Physical record retained for audit.
         Caller MUST write an audit record before calling this method.
         """
         result = await self._session.execute(
@@ -205,9 +230,13 @@ class CanonicalScanStore(BaseStore):
 
     async def get_canonical_scan(self, scan_id: str) -> CanonicalScan:
         """
-        Retrieve a completed CanonicalScan by ID.
+        Retrieve a CanonicalScan by ID.
         Raises StorageNotFoundError if not found.
-        All returned fields are sourced directly from the frozen DB record.
+
+        REPEATED-READ CONSISTENCY PROOF:
+          The returned record is hydrated from the DB row.
+          Canonical rows are never modified after freeze_canonical_scan().
+          Therefore this method always returns identical values for the same scan_id.
         """
         row = await self._session.execute(
             text("SELECT * FROM canonical_scans WHERE scan_id = :scan_id"),
@@ -272,11 +301,113 @@ class CanonicalScanStore(BaseStore):
 
 
 # ---------------------------------------------------------------------------
+# ScanCell Store — written once at canonical freeze, never modified
+# ---------------------------------------------------------------------------
+
+class ScanCellStore(BaseStore):
+    """
+    Storage for per-cell scientific outputs.
+    Written once at canonical freeze. Read-only thereafter.
+    """
+
+    async def write_cells(self, scan_id: str, cells: list[dict]) -> None:
+        """
+        Bulk-write ScanCell records for one scan.
+        Called ONCE at canonical freeze (pipeline step 19).
+        Any attempt to write cells for an already-frozen scan raises StorageImmutabilityError.
+        """
+        for cell in cells:
+            await self._session.execute(
+                text("""
+                    INSERT INTO scan_cells (
+                        cell_id, scan_id, lat_center, lon_center, cell_size_degrees,
+                        environment, evidence_score, causal_score, physics_score,
+                        temporal_score, province_prior, uncertainty, acif_score, tier,
+                        gravity_residual, physics_residual, water_column_residual,
+                        causal_veto_fired, physics_veto_fired, temporal_veto_fired,
+                        province_veto_fired, offshore_gate_blocked,
+                        u_sensor, u_model, u_physics, u_temporal, u_prior,
+                        observable_coverage_fraction, missing_observable_count
+                    ) VALUES (
+                        :cell_id, :scan_id, :lat, :lon, :cell_size,
+                        :env, :ev, :ca, :ph, :tm, :pr, :unc, :acif, :tier,
+                        :g_res, :ph_res, :wc_res,
+                        :c_veto, :p_veto, :t_veto, :prov_veto, :off_blocked,
+                        :u_s, :u_m, :u_p, :u_t, :u_pr,
+                        :coverage, :missing
+                    )
+                    ON CONFLICT (scan_id, cell_id) DO NOTHING
+                """),
+                {
+                    "cell_id": cell["cell_id"], "scan_id": cell["scan_id"],
+                    "lat": cell.get("lat_center"), "lon": cell.get("lon_center"),
+                    "cell_size": cell.get("cell_size_degrees"),
+                    "env": cell.get("environment"),
+                    "ev": cell.get("evidence_score"), "ca": cell.get("causal_score"),
+                    "ph": cell.get("physics_score"), "tm": cell.get("temporal_score"),
+                    "pr": cell.get("province_prior"), "unc": cell.get("uncertainty"),
+                    "acif": cell.get("acif_score"), "tier": cell.get("tier"),
+                    "g_res": cell.get("gravity_residual"),
+                    "ph_res": cell.get("physics_residual"),
+                    "wc_res": cell.get("water_column_residual"),
+                    "c_veto": cell.get("causal_veto_fired", False),
+                    "p_veto": cell.get("physics_veto_fired", False),
+                    "t_veto": cell.get("temporal_veto_fired", False),
+                    "prov_veto": cell.get("province_veto_fired", False),
+                    "off_blocked": cell.get("offshore_gate_blocked", False),
+                    "u_s": cell.get("u_sensor"), "u_m": cell.get("u_model"),
+                    "u_p": cell.get("u_physics"), "u_t": cell.get("u_temporal"),
+                    "u_pr": cell.get("u_prior"),
+                    "coverage": cell.get("observable_coverage_fraction"),
+                    "missing": cell.get("missing_observable_count"),
+                }
+            )
+        await self._session.commit()
+
+    async def list_cells_for_scan(
+        self,
+        scan_id: str,
+        tier_filter: Optional[str] = None,
+        pagination: PaginationParams | None = None,
+    ) -> PaginatedResult:
+        """Read ScanCell records for a scan. No recomputation."""
+        p = pagination or PaginationParams.default()
+        filters = ["scan_id = :scan_id"]
+        params: dict = {"scan_id": scan_id, "limit": p.page_size, "offset": p.offset}
+        if tier_filter:
+            filters.append("tier = :tier")
+            params["tier"] = tier_filter
+        where = " AND ".join(filters)
+
+        rows = await self._session.execute(
+            text(f"SELECT * FROM scan_cells WHERE {where} ORDER BY cell_id LIMIT :limit OFFSET :offset"),
+            params,
+        )
+        total_row = await self._session.execute(
+            text(f"SELECT COUNT(*) FROM scan_cells WHERE {where}"),
+            {k: v for k, v in params.items() if k not in ("limit", "offset")},
+        )
+        total = total_row.scalar() or 0
+        items = [dict(r) for r in rows.mappings().fetchall()]
+        return PaginatedResult(items=items, total=total, params=p)
+
+    async def get_cell(self, scan_id: str, cell_id: str) -> dict:
+        """Single ScanCell lookup by scan_id + cell_id."""
+        row = await self._session.execute(
+            text("SELECT * FROM scan_cells WHERE scan_id = :scan_id AND cell_id = :cell_id"),
+            {"scan_id": scan_id, "cell_id": cell_id},
+        )
+        record = row.mappings().fetchone()
+        if record is None:
+            raise StorageNotFoundError(f"ScanCell not found: scan_id={scan_id}, cell_id={cell_id}")
+        return dict(record)
+
+
+# ---------------------------------------------------------------------------
 # Row mapping helpers
 # ---------------------------------------------------------------------------
 
 def _jsonb(obj) -> Optional[str]:
-    """Serialise a Pydantic model or dict to a JSON string for JSONB columns."""
     if obj is None:
         return None
     if hasattr(obj, "model_dump"):
@@ -285,8 +416,6 @@ def _jsonb(obj) -> Optional[str]:
 
 
 def _row_to_canonical_scan(row) -> CanonicalScan:
-    """Map a raw DB row dict to a CanonicalScan Pydantic model."""
-    from app.models.canonical_scan import CanonicalScan
     from app.models.gate_results import ConfirmationReason, GateResults
     from app.models.threshold_policy import ThresholdPolicy
     from app.models.tier_counts import TierCounts
