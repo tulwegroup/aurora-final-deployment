@@ -8,7 +8,7 @@
  */
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, History, Database, Box, Shield, LogOut, Loader2, ChevronRight, Map, Download, FileText, Globe, Workflow } from "lucide-react";
+import { LayoutDashboard, History, Database, Box, Shield, LogOut, Loader2, ChevronRight, Map, Download, FileText, Globe, Workflow, FlaskConical } from "lucide-react";
 import { auth, clearAccessToken } from "../lib/auroraApi";
 
 const NAV = [
@@ -18,7 +18,8 @@ const NAV = [
   { path: "/twin",     label: "Digital Twin", icon: Box,           roles: ["admin","operator","viewer"] },
   { path: "/map-builder",  label: "Map Builder",  icon: Map,      roles: ["admin","operator","viewer"] },
   { path: "/reports",    label: "Reports",    icon: FileText, roles: ["admin","operator","viewer"] },
-  { path: "/workflow",   label: "New Scan",   icon: Workflow, roles: ["admin","operator","viewer"] },
+  { path: "/workflow",   label: "New Scan",      icon: Workflow,      roles: ["admin","operator","viewer"] },
+  { path: "/pilots",    label: "Pilot Deployments", icon: FlaskConical,  roles: ["admin","operator"] },
   { path: "/portfolio",  label: "Portfolio",  icon: Globe,    roles: ["admin","operator","viewer"] },
   { path: "/map-export",  label: "Map Export",   icon: Download, roles: ["admin","operator","viewer"] },
   { path: "/ground-truth", label: "Ground Truth", icon: Shield,  roles: ["admin","operator"] },

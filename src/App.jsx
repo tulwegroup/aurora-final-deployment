@@ -18,6 +18,7 @@ import MapExport from './pages/MapExport';
 import ReportViewer from './pages/ReportViewer';
 import PortfolioView from './pages/PortfolioView';
 import ClientWorkflow from './pages/ClientWorkflow';
+import PilotDashboard from './pages/PilotDashboard';
 // Add page imports here
 
 const AuthenticatedApp = () => {
@@ -61,6 +62,7 @@ const AuthenticatedApp = () => {
         <Route path="/reports" element={<ReportViewer />} />
         <Route path="/portfolio" element={<PortfolioView />} />
         <Route path="/workflow" element={<ClientWorkflow />} />
+        <Route path="/pilots" element={<PilotDashboard />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
