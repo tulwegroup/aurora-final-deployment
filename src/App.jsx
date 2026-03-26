@@ -3,8 +3,13 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
-import { AuthProvider, useAuth } from '@/lib/AuthContext';
-import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+import Layout from './components/Layout';
+import Dashboard from './pages/Dashboard';
+import ScanHistory from './pages/ScanHistory';
+import ScanDetail from './pages/ScanDetail';
+import DatasetView from './pages/DatasetView';
+import TwinView from './pages/TwinView';
+import AdminPanel from './pages/AdminPanel';
 // Add page imports here
 
 const AuthenticatedApp = () => {
@@ -33,7 +38,14 @@ const AuthenticatedApp = () => {
   // Render the main app
   return (
     <Routes>
-      {/* Add your page Route elements here */}
+      <Route element={<Layout />}>
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/history" element={<ScanHistory />} />
+        <Route path="/history/:scanId" element={<ScanDetail />} />
+        <Route path="/datasets/:scanId" element={<DatasetView />} />
+        <Route path="/twin/:scanId" element={<TwinView />} />
+        <Route path="/admin" element={<AdminPanel />} />
+      </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
