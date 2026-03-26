@@ -414,9 +414,41 @@ Audit Trail Integrity:
 
 ---
 
-## 8. Production Security Controls
+## 8. No-Drift Runtime Enforcement Lock
 
-### 8.1 Access Control (Identity & Secrets)
+Before final deployment, the **No-Drift Runtime Enforcement** gate is engaged:
+
+```yaml
+Rule: Block all exports if violations detected
+Triggers:
+  - Version registry mismatch
+  - Calibration version mismatch
+  - Canonical hash inconsistency
+  - ACIF score missing or invalid
+  - Tier counts incomplete
+
+On Violation:
+  1. Return HTTP 403 Forbidden
+  2. Flag scan: status = "under_review"
+  3. Trigger PagerDuty critical alert
+  4. Log immutable audit entry
+  5. Notify user: manual review required
+
+Resolution:
+  - Admin investigates violation (via runbook)
+  - Clears flag only after manual validation
+  - Exports resume automatically
+```
+
+**See:** `aurora_vnext/docs/phase_am_no_drift_lock.md`
+
+All production outputs remain **deterministic, immutable, and traceable.**
+
+---
+
+## 9. Production Security Controls
+
+### 9.1 Access Control (Identity & Secrets)
 
 ```yaml
 API Authentication:
@@ -437,7 +469,7 @@ Secrets Management:
   - No secrets in code or logs
 ```
 
-### 8.2 Encryption
+### 9.2 Encryption
 
 ```yaml
 In Transit:
@@ -457,7 +489,7 @@ Key Management:
 
 ---
 
-## 9. Cost Optimization & Budgeting
+## 10. Cost Optimization & Budgeting
 
 ```yaml
 Estimated Monthly Costs (Production):
@@ -478,7 +510,7 @@ Cost Optimization:
 
 ---
 
-## 10. Completion Proof
+## 11. Completion Proof
 
 | Requirement | Status | Evidence |
 |-------------|--------|----------|
