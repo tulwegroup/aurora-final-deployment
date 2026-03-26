@@ -52,12 +52,19 @@ logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 class EventType:
-    SCAN_COMPLETED    = "scan.completed"
-    SCAN_FAILED       = "scan.failed"
-    TWIN_BUILT        = "twin.built"
-    SCAN_REPROCESSING = "scan.reprocessing"
+    SCAN_COMPLETED          = "scan.completed"
+    SCAN_FAILED             = "scan.failed"
+    TWIN_BUILT              = "twin.built"
+    SCAN_REPROCESSING       = "scan.reprocessing"
+    # Phase Y — Ground Truth & Calibration events
+    GROUND_TRUTH_INGESTED   = "ground_truth.ingested"
+    GROUND_TRUTH_BULK       = "ground_truth.bulk_ingested"
+    CALIBRATION_VERSION     = "calibration.version_created"
 
-    _ALL = {SCAN_COMPLETED, SCAN_FAILED, TWIN_BUILT, SCAN_REPROCESSING}
+    _ALL = {
+        SCAN_COMPLETED, SCAN_FAILED, TWIN_BUILT, SCAN_REPROCESSING,
+        GROUND_TRUTH_INGESTED, GROUND_TRUTH_BULK, CALIBRATION_VERSION,
+    }
 
     @classmethod
     def is_valid(cls, event_type: str) -> bool:
