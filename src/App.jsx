@@ -12,6 +12,7 @@ import ScanDetail from './pages/ScanDetail';
 import DatasetView from './pages/DatasetView';
 import TwinView from './pages/TwinView';
 import AdminPanel from './pages/AdminPanel';
+import GroundTruthAdmin from './pages/GroundTruthAdmin';
 // Add page imports here
 
 const AuthenticatedApp = () => {
@@ -47,6 +48,7 @@ const AuthenticatedApp = () => {
         <Route path="/datasets/:scanId" element={<DatasetView />} />
         <Route path="/twin/:scanId" element={<TwinView />} />
         <Route path="/admin" element={<AdminPanel />} />
+        <Route path="/ground-truth" element={<GroundTruthAdmin />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
