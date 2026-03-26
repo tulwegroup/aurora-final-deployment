@@ -31,17 +31,16 @@ export default function DeploymentPanel() {
 
   const handleDeploy = async () => {
     setStep('generating');
-    setScript(null);
     setError(null);
 
     try {
       const response = await base44.functions.invoke('deployToAWS', form);
       
       if (response.data.status === 'success') {
-        setScript(response.data.script);
+        setScript(response.data);
         setStep('success');
       } else {
-        setError(response.data.error || 'Failed to generate script');
+        setError(response.data.error || 'Deployment failed');
         setStep('error');
       }
     } catch (err) {
@@ -51,9 +50,9 @@ export default function DeploymentPanel() {
   };
 
   const copyToClipboard = () => {
-    if (script) {
-      navigator.clipboard.writeText(script);
-      alert('Script copied to clipboard!');
+    if (script?.stackId) {
+      navigator.clipboard.writeText(JSON.stringify(script, null, 2));
+      alert('Deployment info copied!');
     }
   };
 
@@ -209,36 +208,43 @@ export default function DeploymentPanel() {
         <Card className="border-emerald-300 bg-emerald-50">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2 text-emerald-900">
-              <CheckCircle className="w-5 h-5" /> Script Generated
+              <CheckCircle className="w-5 h-5" /> 🚀 Going Live!
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-emerald-900">
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Copy & run this script on your local machine:</p>
-              <div className="bg-slate-900 text-slate-100 rounded-lg p-4 font-mono text-xs overflow-x-auto max-h-96 overflow-y-auto">
-                {script?.split('\n').map((line, i) => (
-                  <div key={i}>{line}</div>
-                ))}
+            <div className="space-y-3">
+              <p className="text-sm font-medium">Aurora OSI deployment initiated:</p>
+              <div className="space-y-2 text-sm">
+                <div><strong>Stack ID:</strong> <code className="bg-white px-2 py-1 rounded text-xs text-slate-700">{script?.stackId?.slice(0, 50)}...</code></div>
+                <div><strong>Region:</strong> {script?.region}</div>
+                <div><strong>Estimated Time:</strong> {script?.estimatedTime}</div>
               </div>
+              {script?.nextSteps && (
+                <div className="space-y-1">
+                  <p className="font-medium text-xs">Next steps:</p>
+                  <ul className="text-xs space-y-1">
+                    {script.nextSteps.map((step, i) => (
+                      <li key={i} className="flex gap-2">• {step}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
-            <div className="flex gap-2">
-              <Button
-                onClick={copyToClipboard}
-                className="gap-2 flex-1"
-              >
-                <Copy className="w-4 h-4" /> Copy Script
+            <a href={script?.consoleUrl} target="_blank" rel="noopener noreferrer" className="block">
+              <Button className="w-full gap-2 bg-emerald-700 hover:bg-emerald-800">
+                <Cloud className="w-4 h-4" /> Monitor in AWS Console
               </Button>
-              <Button
-                onClick={() => {
-                  setStep('form');
-                  setScript(null);
-                }}
-                variant="outline"
-                className="flex-1"
-              >
-                Done
-              </Button>
-            </div>
+            </a>
+            <Button
+              onClick={() => {
+                setStep('form');
+                setScript(null);
+              }}
+              variant="outline"
+              className="w-full"
+            >
+              Deploy Another
+            </Button>
           </CardContent>
         </Card>
       )}

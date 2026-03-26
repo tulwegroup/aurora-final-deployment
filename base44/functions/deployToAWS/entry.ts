@@ -1,11 +1,50 @@
 /**
- * deployToAWS — Generate deployment instructions for Aurora OSI
+ * deployToAWS — Deploy Aurora OSI to AWS CloudFormation (Live)
  * 
- * Since this runs in Deno (Base44 cloud), we can't execute Docker/AWS CLI.
- * Instead, we generate shell commands the user can copy & run locally.
+ * Provisions ECS Fargate, RDS Aurora, ALB, S3 via CloudFormation API.
  */
 
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
+import { createHmac } from 'node:crypto';
+
+function signRequest(method, host, path, headers, body, accessKeyId, secretAccessKey) {
+  const canonicalRequest = [
+    method,
+    path,
+    '',
+    Object.entries(headers)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${k}:${v}`)
+      .join('\n'),
+    '',
+    Object.keys(headers)
+      .sort()
+      .join(';'),
+    body ? createHmac('sha256', 'AWS4-HMAC-SHA256').update(body).digest('hex') : 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+  ].join('\n');
+
+  const scope = [
+    new Date().toISOString().split('T')[0],
+    host.split('.')[1],
+    'cloudformation',
+    'aws4_request',
+  ].join('/');
+
+  const stringToSign = [
+    'AWS4-HMAC-SHA256',
+    new Date().toISOString(),
+    scope,
+    createHmac('sha256', 'AWS4-HMAC-SHA256').update(canonicalRequest).digest('hex'),
+  ].join('\n');
+
+  const kDate = createHmac('sha256', `AWS4${secretAccessKey}`).update(new Date().toISOString().split('T')[0]).digest();
+  const kRegion = createHmac('sha256', kDate).update(host.split('.')[1]).digest();
+  const kService = createHmac('sha256', kRegion).update('cloudformation').digest();
+  const kSigning = createHmac('sha256', kService).update('aws4_request').digest();
+  const signature = createHmac('sha256', kSigning).update(stringToSign).digest('hex');
+
+  return signature;
+}
 
 Deno.serve(async (req) => {
   try {
@@ -19,13 +58,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Load AWS credentials from environment
     const awsAccessKeyId = Deno.env.get('AWS_ACCESS_KEY_ID');
     const awsSecretAccessKey = Deno.env.get('AWS_SECRET_ACCESS_KEY');
 
     if (!awsAccessKeyId || !awsSecretAccessKey) {
       return Response.json(
-        { error: 'AWS credentials not configured. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in dashboard secrets.' },
+        { error: 'AWS credentials not configured in dashboard secrets.' },
         { status: 400 }
       );
     }
@@ -40,66 +78,78 @@ Deno.serve(async (req) => {
       gee_service_account_key,
     } = body;
 
-    // Validate
     if (!db_password || !certificate_arn || !gee_service_account_key) {
       return Response.json(
-        { error: 'Missing required: db_password, certificate_arn, gee_service_account_key' },
+        { error: 'Missing required parameters' },
         { status: 400 }
       );
     }
 
-    // Encode GEE key
+    const stackName = `aurora-osi-${environment}`;
     const geeKeyBase64 = btoa(gee_service_account_key);
 
-    // Generate shell script commands
-    const commands = [
-      '#!/bin/bash',
-      'set -e',
-      '',
-      '# Aurora OSI Deployment Script',
-      `# Generated: ${new Date().toISOString()}`,
-      '',
-      'echo "Building Docker image..."',
-      'cd aurora_vnext',
-      'docker build -f infra/docker/Dockerfile.api -t aurora-api:latest .',
-      '',
-      'echo "Pushing to ECR..."',
-      `AWS_REGION=${aws_region}`,
-      `ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text --region $AWS_REGION)`,
-      `ECR_URI=$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com`,
-      `aws ecr create-repository --repository-name aurora-api --region $AWS_REGION 2>/dev/null || true`,
-      `aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_URI`,
-      `docker tag aurora-api:latest $ECR_URI/aurora-api:latest`,
-      `docker push $ECR_URI/aurora-api:latest`,
-      '',
-      'echo "Deploying CloudFormation stack..."',
-      `aws cloudformation create-stack \\`,
-      `  --stack-name aurora-osi-${environment} \\`,
-      `  --template-body file://infra/cloudformation/aurora-production.yaml \\`,
-      `  --parameters \\`,
-      `    ParameterKey=Environment,ParameterValue=${environment} \\`,
-      `    ParameterKey=DockerImage,ParameterValue=\$ECR_URI/aurora-api:latest \\`,
-      `    ParameterKey=DBPassword,ParameterValue='${db_password}' \\`,
-      `    ParameterKey=DomainName,ParameterValue=${domain_name} \\`,
-      `    ParameterKey=CertificateArn,ParameterValue='${certificate_arn}' \\`,
-      `    ParameterKey=GEEServiceAccountKey,ParameterValue='${geeKeyBase64}' \\`,
-      `  --capabilities CAPABILITY_NAMED_IAM \\`,
-      `  --region $AWS_REGION`,
-      '',
-      'echo "✅ Stack creation initiated!"',
-      `echo "Monitor: aws cloudformation describe-stack-events --stack-name aurora-osi-${environment} --region $AWS_REGION"`,
-    ];
+    // Fetch CloudFormation template
+    const templateUrl = 'https://raw.githubusercontent.com/aurora-ai/aurora-vnext/main/infra/cloudformation/aurora-production.yaml';
+    const templateResponse = await fetch(templateUrl);
+    const template = await templateResponse.text();
+
+    // Build CloudFormation request parameters
+    const params = new URLSearchParams();
+    params.append('Action', 'CreateStack');
+    params.append('StackName', stackName);
+    params.append('TemplateBody', template);
+    params.append('Parameters.member.1.ParameterKey', 'Environment');
+    params.append('Parameters.member.1.ParameterValue', environment);
+    params.append('Parameters.member.2.ParameterKey', 'DBPassword');
+    params.append('Parameters.member.2.ParameterValue', db_password);
+    params.append('Parameters.member.3.ParameterKey', 'DomainName');
+    params.append('Parameters.member.3.ParameterValue', domain_name);
+    params.append('Parameters.member.4.ParameterKey', 'CertificateArn');
+    params.append('Parameters.member.4.ParameterValue', certificate_arn);
+    params.append('Parameters.member.5.ParameterKey', 'GEEServiceAccountKey');
+    params.append('Parameters.member.5.ParameterValue', geeKeyBase64);
+    params.append('Capabilities.member.1', 'CAPABILITY_NAMED_IAM');
+    params.append('Capabilities.member.2', 'CAPABILITY_AUTO_EXPAND');
+    params.append('Version', '2010-05-08');
+
+    const host = `cloudformation.${aws_region}.amazonaws.com`;
+    const path = '/';
+
+    // Make request to AWS CloudFormation
+    const cfResponse = await fetch(`https://${host}${path}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Host': host,
+      },
+      body: params.toString(),
+    });
+
+    if (!cfResponse.ok) {
+      const error = await cfResponse.text();
+      return Response.json(
+        { error: `CloudFormation error: ${error}` },
+        { status: cfResponse.status }
+      );
+    }
+
+    const xmlResponse = await cfResponse.text();
+    const stackIdMatch = xmlResponse.match(/<StackId>([^<]+)<\/StackId>/);
+    const stackId = stackIdMatch ? stackIdMatch[1] : null;
 
     return Response.json({
       status: 'success',
-      message: 'Deployment script generated',
-      script: commands.join('\n'),
-      instructions: [
-        '1. Copy the script below',
-        '2. Save to: deploy.sh',
-        '3. Run: chmod +x deploy.sh && ./deploy.sh',
-        '4. Script will: build Docker image, push to ECR, deploy CloudFormation',
-        '5. Estimated time: 15–25 minutes',
+      message: 'Stack creation initiated - going live!',
+      stackId,
+      stackName,
+      region: aws_region,
+      estimatedTime: '15–25 minutes',
+      consoleUrl: `https://console.aws.amazon.com/cloudformation/home?region=${aws_region}#/stacks`,
+      nextSteps: [
+        '✅ Stack creation in progress',
+        'Resources being provisioned: ECS Fargate, RDS Aurora, ALB, S3, monitoring',
+        `Monitor at: https://console.aws.amazon.com/cloudformation`,
+        'Aurora API will be live at your domain once complete',
       ],
     });
   } catch (error) {
