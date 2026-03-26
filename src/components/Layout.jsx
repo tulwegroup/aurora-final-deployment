@@ -8,7 +8,7 @@
  */
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, History, Database, Box, Shield, LogOut, Loader2, ChevronRight, Map, Download } from "lucide-react";
+import { LayoutDashboard, History, Database, Box, Shield, LogOut, Loader2, ChevronRight, Map, Download, FileText } from "lucide-react";
 import { auth, clearAccessToken } from "../lib/auroraApi";
 
 const NAV = [
@@ -16,7 +16,8 @@ const NAV = [
   { path: "/history",  label: "Scan History", icon: History,       roles: ["admin","operator","viewer"] },
   { path: "/datasets", label: "Datasets",   icon: Database,        roles: ["admin","operator","viewer"] },
   { path: "/twin",     label: "Digital Twin", icon: Box,           roles: ["admin","operator","viewer"] },
-  { path: "/map-builder", label: "Map Builder",  icon: Map,    roles: ["admin","operator","viewer"] },
+  { path: "/map-builder",  label: "Map Builder",  icon: Map,      roles: ["admin","operator","viewer"] },
+  { path: "/reports",      label: "Reports",      icon: FileText, roles: ["admin","operator","viewer"] },
   { path: "/map-export",  label: "Map Export",   icon: Download, roles: ["admin","operator","viewer"] },
   { path: "/ground-truth", label: "Ground Truth", icon: Shield,  roles: ["admin","operator"] },
   { path: "/admin",       label: "Admin",        icon: Shield,  roles: ["admin"] },

@@ -15,6 +15,7 @@ import AdminPanel from './pages/AdminPanel';
 import GroundTruthAdmin from './pages/GroundTruthAdmin';
 import MapScanBuilder from './pages/MapScanBuilder';
 import MapExport from './pages/MapExport';
+import ReportViewer from './pages/ReportViewer';
 // Add page imports here
 
 const AuthenticatedApp = () => {
@@ -54,6 +55,8 @@ const AuthenticatedApp = () => {
         <Route path="/map-builder" element={<MapScanBuilder />} />
         <Route path="/map-export/:scanId" element={<MapExport />} />
         <Route path="/map-export" element={<MapExport />} />
+        <Route path="/reports/:scanId" element={<ReportViewer />} />
+        <Route path="/reports" element={<ReportViewer />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
