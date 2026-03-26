@@ -7,11 +7,11 @@ import { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { AlertTriangle, Cloud, Loader2, CheckCircle, LogOut } from 'lucide-react';
+import { AlertTriangle, Cloud, Loader2, CheckCircle, Copy } from 'lucide-react';
 
 export default function DeploymentPanel() {
-  const [step, setStep] = useState('form'); // form | deploying | success | error
-  const [logs, setLogs] = useState([]);
+  const [step, setStep] = useState('form'); // form | generating | success | error
+  const [script, setScript] = useState(null);
   const [error, setError] = useState(null);
 
   // Form state
@@ -30,27 +30,30 @@ export default function DeploymentPanel() {
   };
 
   const handleDeploy = async () => {
-    setStep('deploying');
-    setLogs([]);
+    setStep('generating');
+    setScript(null);
     setError(null);
 
     try {
       const response = await base44.functions.invoke('deployToAWS', form);
       
-      if (response.data.logs) {
-        setLogs(response.data.logs);
-      }
-
       if (response.data.status === 'success') {
+        setScript(response.data.script);
         setStep('success');
       } else {
-        setError(response.data.error || 'Deployment failed');
+        setError(response.data.error || 'Failed to generate script');
         setStep('error');
       }
     } catch (err) {
-      setError(err.message || 'Deployment failed');
-      setLogs(prev => [...prev, `Error: ${err.message}`]);
+      setError(err.message);
       setStep('error');
+    }
+  };
+
+  const copyToClipboard = () => {
+    if (script) {
+      navigator.clipboard.writeText(script);
+      alert('Script copied to clipboard!');
     }
   };
 
@@ -182,25 +185,16 @@ export default function DeploymentPanel() {
         </Card>
       )}
 
-      {/* Deploying */}
-      {step === 'deploying' && (
+      {/* Generating */}
+      {step === 'generating' && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin" /> Deployment in Progress
+              <Loader2 className="w-4 h-4 animate-spin" /> Generating Script
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">Live deployment log:</p>
-              <div className="bg-slate-900 text-slate-100 rounded-lg p-4 max-h-96 overflow-y-auto font-mono text-xs space-y-1">
-                {logs.length === 0 ? (
-                  <div className="text-muted-foreground">Initializing...</div>
-                ) : (
-                  logs.map((log, i) => <div key={i}>{log}</div>)
-                )}
-              </div>
-            </div>
+          <CardContent className="space-y-2">
+            <p className="text-sm text-muted-foreground">Creating deployment shell script...</p>
           </CardContent>
         </Card>
       )}
@@ -210,23 +204,36 @@ export default function DeploymentPanel() {
         <Card className="border-emerald-300 bg-emerald-50">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2 text-emerald-900">
-              <CheckCircle className="w-5 h-5" /> Deployment Initiated
+              <CheckCircle className="w-5 h-5" /> Script Generated
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-emerald-900">
-            <p className="text-sm">
-              CloudFormation stack has been created. Monitor progress in the AWS Console.
-            </p>
-            <div className="bg-white rounded-lg p-3 space-y-2 text-xs font-mono max-h-64 overflow-y-auto">
-              {logs.map((log, i) => <div key={i}>{log}</div>)}
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Copy & run this script on your local machine:</p>
+              <div className="bg-slate-900 text-slate-100 rounded-lg p-4 font-mono text-xs overflow-x-auto max-h-96 overflow-y-auto">
+                {script?.split('\n').map((line, i) => (
+                  <div key={i}>{line}</div>
+                ))}
+              </div>
             </div>
-            <Button
-              onClick={() => setStep('form')}
-              variant="outline"
-              className="w-full"
-            >
-              Close
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                onClick={copyToClipboard}
+                className="gap-2 flex-1"
+              >
+                <Copy className="w-4 h-4" /> Copy Script
+              </Button>
+              <Button
+                onClick={() => {
+                  setStep('form');
+                  setScript(null);
+                }}
+                variant="outline"
+                className="flex-1"
+              >
+                Done
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -236,16 +243,11 @@ export default function DeploymentPanel() {
         <Card className="border-red-300 bg-red-50">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2 text-red-900">
-              <AlertTriangle className="w-5 h-5" /> Deployment Failed
+              <AlertTriangle className="w-5 h-5" /> Error
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-red-900">
             <p className="text-sm font-medium">{error}</p>
-            {logs.length > 0 && (
-              <div className="bg-white rounded-lg p-3 space-y-1 text-xs font-mono max-h-64 overflow-y-auto">
-                {logs.map((log, i) => <div key={i}>{log}</div>)}
-              </div>
-            )}
             <div className="flex gap-2">
               <Button
                 onClick={() => setStep('form')}
