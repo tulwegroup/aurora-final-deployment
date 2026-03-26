@@ -16,6 +16,8 @@ export default function DeploymentPanel() {
 
   // Form state
   const [form, setForm] = useState({
+    aws_access_key_id: '',
+    aws_secret_access_key: '',
     aws_region: 'us-east-1',
     environment: 'production',
     domain_name: 'api.aurora-osi.io',
@@ -84,6 +86,37 @@ export default function DeploymentPanel() {
             <CardTitle className="text-base">Deployment Configuration</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* AWS Credentials */}
+            <div className="border-b pb-4 mb-4">
+              <h3 className="text-sm font-semibold mb-3">AWS Credentials</h3>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm font-medium">Access Key ID</label>
+                  <input
+                    type="password"
+                    name="aws_access_key_id"
+                    placeholder="AKIA..."
+                    value={form.aws_access_key_id}
+                    onChange={handleInputChange}
+                    className="w-full mt-1 px-3 py-2 border rounded-md text-sm bg-background"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">From AWS IAM console</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Secret Access Key</label>
+                  <input
+                    type="password"
+                    name="aws_secret_access_key"
+                    placeholder="••••••••••••••••"
+                    value={form.aws_secret_access_key}
+                    onChange={handleInputChange}
+                    className="w-full mt-1 px-3 py-2 border rounded-md text-sm bg-background"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Shown only once during creation</p>
+                </div>
+              </div>
+            </div>
+
             {/* AWS Region */}
             <div>
               <label className="text-sm font-medium">AWS Region</label>
@@ -171,7 +204,7 @@ export default function DeploymentPanel() {
             <div className="flex gap-3 pt-4">
               <Button
                 onClick={handleDeploy}
-                disabled={!form.db_password || !form.certificate_arn || !form.gee_service_account_key}
+                disabled={!form.aws_access_key_id || !form.aws_secret_access_key || !form.db_password || !form.certificate_arn || !form.gee_service_account_key}
                 className="gap-2"
               >
                 <Cloud className="w-4 h-4" />
@@ -258,10 +291,9 @@ export default function DeploymentPanel() {
               </Button>
               <Button
                 onClick={() => {
-                  setStep('form');
-                  setLogs([]);
-                  setError(null);
-                }}
+                    setStep('form');
+                    setError(null);
+                  }}
                 variant="outline"
                 className="flex-1"
               >
