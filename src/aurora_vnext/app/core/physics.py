@@ -55,9 +55,11 @@ from app.models.component_scores import (
 G_SI = 6.674e-11   # m³ kg⁻¹ s⁻²
 G_MGAL = G_SI * 1e5  # Convert to mGal units
 
-# Default penalty weights (overridden by Θ_c in Phase J)
-_DEFAULT_LAMBDA_1 = 0.5   # Gravity residual penalty
-_DEFAULT_LAMBDA_2 = 0.3   # Poisson residual penalty
+# CONSTITUTIONAL SAFEGUARD (Phase W approval):
+# No default penalty weights or veto thresholds exist at module level.
+# ALL values MUST be sourced explicitly from Θ_c at call time.
+# Callers that omit these parameters receive a TypeError — fail-fast by design.
+# See: docs/phase_w_completion_proof.md §Pre-Phase Confirmation
 
 
 def compute_gravity_residual(
@@ -165,8 +167,8 @@ def compute_water_column_residual(
 def compute_physics_score(
     r_grav: Optional[float],
     r_phys: Optional[float],
-    lambda_1: float = _DEFAULT_LAMBDA_1,
-    lambda_2: float = _DEFAULT_LAMBDA_2,
+    lambda_1: float,   # REQUIRED — must be sourced from Θ_c; no default (Phase W safeguard)
+    lambda_2: float,   # REQUIRED — must be sourced from Θ_c; no default (Phase W safeguard)
 ) -> float:
     """
     §6.4 — Compute physics consistency score Ψ_i.
@@ -181,8 +183,8 @@ def compute_physics_score(
     Args:
         r_grav:   Gravity residual R_grav ≥ 0 (or None)
         r_phys:   Poisson residual R_phys ≥ 0 (or None)
-        lambda_1: Gravity penalty weight (Θ_c)
-        lambda_2: Poisson penalty weight (Θ_c)
+        lambda_1: Gravity penalty weight — MUST come from Θ_c (no default)
+        lambda_2: Poisson penalty weight — MUST come from Θ_c (no default)
 
     Returns:
         Ψ_i ∈ (0, 1]
@@ -200,11 +202,18 @@ def compute_physics_score(
     return max(0.0, min(1.0, psi))
 
 
+class MissingThetaCError(ValueError):
+    """
+    Raised when physics scoring is attempted without explicit Θ_c configuration.
+    CONSTITUTIONAL SAFEGUARD: veto thresholds must never fall back to defaults.
+    """
+
+
 def apply_physics_veto(
     r_grav: Optional[float],
     r_phys: Optional[float],
-    tau_grav_veto: float = 100.0,
-    tau_phys_veto: float = 50.0,
+    tau_grav_veto: float,   # REQUIRED — must be sourced from Θ_c; no default (Phase W safeguard)
+    tau_phys_veto: float,   # REQUIRED — must be sourced from Θ_c; no default (Phase W safeguard)
 ) -> bool:
     """
     §6.6 — Check if physics residuals exceed veto thresholds.
@@ -212,7 +221,12 @@ def apply_physics_veto(
     Returns True (veto fires → Ψ_i = 0.0) if:
       R_grav > τ_grav_veto  OR  R_phys > τ_phys_veto
 
-    Threshold values are sourced from Θ_c (overridden by commodity in Phase J).
+    CONSTITUTIONAL SAFEGUARD (Phase W):
+      tau_grav_veto and tau_phys_veto are REQUIRED parameters with no defaults.
+      They MUST be sourced from Θ_c commodity configuration at call time.
+      Omitting them raises TypeError at the call site — fail-fast by design.
+      This prevents any scan from being evaluated against implicit default thresholds.
+
     None residuals are NOT vetoed — absence of data is handled by u_sensor.
     """
     if r_grav is not None and r_grav > tau_grav_veto:
@@ -229,21 +243,26 @@ def score_physics(
     g_pred_mgal: Optional[float],
     phi_laplacian: Optional[float],
     rho_model: Optional[float],
+    lambda_1: float,          # REQUIRED from Θ_c — no default (Phase W safeguard)
+    lambda_2: float,          # REQUIRED from Θ_c — no default (Phase W safeguard)
+    tau_grav_veto: float,     # REQUIRED from Θ_c — no default (Phase W safeguard)
+    tau_phys_veto: float,     # REQUIRED from Θ_c — no default (Phase W safeguard)
     v_observed: Optional[float] = None,
     k_permeability: Optional[float] = None,
     mu_viscosity: Optional[float] = None,
     pressure_gradient: Optional[float] = None,
     g_obs_uncorrected_mgal: Optional[float] = None,
     delta_g_wc_mgal: Optional[float] = None,
-    lambda_1: float = _DEFAULT_LAMBDA_1,
-    lambda_2: float = _DEFAULT_LAMBDA_2,
-    tau_grav_veto: float = 100.0,
-    tau_phys_veto: float = 50.0,
     w_d: float = 1.0,
 ) -> PhysicsResult:
     """
     Full physics scoring pipeline for one cell.
     Computes all residuals → physics score → veto check.
+
+    CONSTITUTIONAL SAFEGUARD (Phase W):
+      lambda_1, lambda_2, tau_grav_veto, tau_phys_veto are REQUIRED positional
+      keyword arguments with no defaults. The pipeline MUST inject them from Θ_c.
+      Omitting any of them raises TypeError at the call site — fail-fast.
     """
     r_grav = compute_gravity_residual(g_obs_mgal, g_pred_mgal, w_d)
     r_phys = compute_poisson_residual(phi_laplacian, rho_model)
