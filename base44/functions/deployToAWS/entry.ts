@@ -53,6 +53,7 @@ async function signV4({ method, host, path, body, region, service, accessKeyId, 
 
 const CF_TEMPLATE = `AWSTemplateFormatVersion: '2010-09-09'
 Description: 'Aurora OSI Production Deployment - ECS Fargate + RDS + S3'
+Description: 'Aurora OSI Production Deployment - ECS Fargate + RDS + S3'
 
 Parameters:
   Environment:
@@ -318,7 +319,13 @@ Resources:
               Value: !Ref Environment
           Secrets:
             - Name: AURORA_GEE_SERVICE_ACCOUNT_KEY
-              ValueFrom: 'arn:aws:secretsmanager:*:*:secret:aurora-gee-key*'
+              ValueFrom: !Join
+                - ''
+                - - 'arn:aws:secretsmanager:'
+                  - !Ref 'AWS::Region'
+                  - ':'
+                  - !Ref 'AWS::AccountId'
+                  - ':secret:aurora-gee-key'
           HealthCheck:
             Command:
               - CMD-SHELL
