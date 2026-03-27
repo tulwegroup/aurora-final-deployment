@@ -19,7 +19,7 @@ const BUILDSPEC = {
     build: {
       commands: [
         'echo "Building Docker image..."',
-        'docker build -f Dockerfile.minimal -t 368331615566.dkr.ecr.us-east-1.amazonaws.com/aurora-api:latest .',
+        'docker build -f src/Dockerfile.minimal -t 368331615566.dkr.ecr.us-east-1.amazonaws.com/aurora-api:latest .',
       ]
     },
     post_build: {
