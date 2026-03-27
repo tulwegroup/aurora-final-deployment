@@ -262,7 +262,7 @@ Resources:
             Statement:
               - Effect: Allow
                 Action: 'secretsmanager:GetSecretValue'
-                Resource: !GetAtt GEESecretsManagerSecret.Arn
+                Resource: 'arn:aws:secretsmanager:*:*:secret:aurora-gee-key*'
 
   ECSTaskRole:
     Type: AWS::IAM::Role
