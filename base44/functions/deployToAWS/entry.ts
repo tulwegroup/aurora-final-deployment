@@ -227,7 +227,10 @@ Resources:
   ECSCluster:
     Type: AWS::ECS::Cluster
     Properties:
-      ClusterName: aurora-cluster
+      ClusterName: !Join
+        - '-'
+        - - 'aurora-cluster'
+          - !Select [1, !Split ['-', !Ref 'AWS::StackName']]
       ClusterSettings:
         - Name: containerInsights
           Value: enabled
@@ -466,6 +469,7 @@ Deno.serve(async (req) => {
       aws_region = 'us-east-1',
       environment = 'production',
       domain_name = 'api.aurora-osi.io',
+      deployment_id = Date.now().toString().slice(-6),
     } = requestBody;
 
     const stackName = `aurora-osi-${environment}`;
