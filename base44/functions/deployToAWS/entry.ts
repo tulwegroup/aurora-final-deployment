@@ -1,50 +1,9 @@
 /**
  * deployToAWS — Deploy Aurora OSI to AWS CloudFormation (Live)
- * 
  * Provisions ECS Fargate, RDS Aurora, ALB, S3 via CloudFormation API.
  */
 
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
-import { createHmac } from 'node:crypto';
-
-function signRequest(method, host, path, headers, body, accessKeyId, secretAccessKey) {
-  const canonicalRequest = [
-    method,
-    path,
-    '',
-    Object.entries(headers)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => `${k}:${v}`)
-      .join('\n'),
-    '',
-    Object.keys(headers)
-      .sort()
-      .join(';'),
-    body ? createHmac('sha256', 'AWS4-HMAC-SHA256').update(body).digest('hex') : 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
-  ].join('\n');
-
-  const scope = [
-    new Date().toISOString().split('T')[0],
-    host.split('.')[1],
-    'cloudformation',
-    'aws4_request',
-  ].join('/');
-
-  const stringToSign = [
-    'AWS4-HMAC-SHA256',
-    new Date().toISOString(),
-    scope,
-    createHmac('sha256', 'AWS4-HMAC-SHA256').update(canonicalRequest).digest('hex'),
-  ].join('\n');
-
-  const kDate = createHmac('sha256', `AWS4${secretAccessKey}`).update(new Date().toISOString().split('T')[0]).digest();
-  const kRegion = createHmac('sha256', kDate).update(host.split('.')[1]).digest();
-  const kService = createHmac('sha256', kRegion).update('cloudformation').digest();
-  const kSigning = createHmac('sha256', kService).update('aws4_request').digest();
-  const signature = createHmac('sha256', kSigning).update(stringToSign).digest('hex');
-
-  return signature;
-}
 
 Deno.serve(async (req) => {
   try {
@@ -52,31 +11,31 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
 
     if (user?.role !== 'admin') {
-      return Response.json(
-        { error: 'Forbidden: Admin access required' },
-        { status: 403 }
-      );
+      return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
 
     const awsAccessKeyId = Deno.env.get('AWS_ACCESS_KEY_ID');
     const awsSecretAccessKey = Deno.env.get('AWS_SECRET_ACCESS_KEY');
-    const dbPassword = Deno.env.get('AURORA_DB_PASSWORD');
+    const dbPasswordRaw = Deno.env.get('AURORA_DB_PASSWORD');
     const certificateArn = Deno.env.get('AURORA_CERTIFICATE_ARN');
     const geeServiceAccountKey = Deno.env.get('AURORA_GEE_SERVICE_ACCOUNT_KEY');
 
     if (!awsAccessKeyId || !awsSecretAccessKey) {
-      return Response.json(
-        { error: 'AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY required in dashboard secrets' },
-        { status: 400 }
-      );
+      return Response.json({ error: 'AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY required in dashboard secrets' }, { status: 400 });
     }
 
-    if (!dbPassword || !certificateArn || !geeServiceAccountKey) {
-      return Response.json(
-        { error: 'Missing deployment secrets: AURORA_DB_PASSWORD, AURORA_CERTIFICATE_ARN, AURORA_GEE_SERVICE_ACCOUNT_KEY' },
-        { status: 400 }
-      );
+    if (!dbPasswordRaw || !certificateArn || !geeServiceAccountKey) {
+      return Response.json({ error: 'Missing deployment secrets: AURORA_DB_PASSWORD, AURORA_CERTIFICATE_ARN, AURORA_GEE_SERVICE_ACCOUNT_KEY' }, { status: 400 });
     }
+
+    // If AURORA_DB_PASSWORD looks like a Secrets Manager ARN, reject with clear instructions
+    if (dbPasswordRaw.startsWith('arn:aws:secretsmanager')) {
+      return Response.json({
+        error: 'AURORA_DB_PASSWORD contains a Secrets Manager ARN, not the actual password. Go to AWS Secrets Manager → click "Retrieve secret value" → copy the "password" field value → update AURORA_DB_PASSWORD in dashboard secrets with that actual password string.'
+      }, { status: 400 });
+    }
+
+    const dbPassword = dbPasswordRaw;
 
     const body = await req.json();
     const {
@@ -113,10 +72,9 @@ Deno.serve(async (req) => {
     params.append('Version', '2010-05-08');
 
     const host = `cloudformation.${aws_region}.amazonaws.com`;
-    const path = '/';
 
     // Make request to AWS CloudFormation
-    const cfResponse = await fetch(`https://${host}${path}`, {
+    const cfResponse = await fetch(`https://${host}/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -127,10 +85,7 @@ Deno.serve(async (req) => {
 
     if (!cfResponse.ok) {
       const error = await cfResponse.text();
-      return Response.json(
-        { error: `CloudFormation error: ${error}` },
-        { status: cfResponse.status }
-      );
+      return Response.json({ error: `CloudFormation error: ${error}` }, { status: cfResponse.status });
     }
 
     const xmlResponse = await cfResponse.text();
@@ -148,14 +103,11 @@ Deno.serve(async (req) => {
       nextSteps: [
         '✅ Stack creation in progress',
         'Resources being provisioned: ECS Fargate, RDS Aurora, ALB, S3, monitoring',
-        `Monitor at: https://console.aws.amazon.com/cloudformation`,
+        'Monitor at: https://console.aws.amazon.com/cloudformation',
         'Aurora API will be live at your domain once complete',
       ],
     });
   } catch (error) {
-    return Response.json(
-      { error: error.message },
-      { status: 500 }
-    );
+    return Response.json({ error: error.message }, { status: 500 });
   }
 });
