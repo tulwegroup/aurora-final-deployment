@@ -65,7 +65,7 @@ Parameters:
     NoEcho: true
   DomainName:
     Type: String
-    Default: api.aurora-osi.io
+    Default: api.aurora-osi.com
   CertificateArn:
     Type: String
   GEEServiceAccountKey:
@@ -464,7 +464,7 @@ Resources:
 
 Outputs:
   APIEndpoint:
-    Value: !Sub 'https://\${DomainName}'
+    Value: !Sub 'https://api.aurora-osi.com'
   ALBDNSName:
     Value: !GetAtt ALB.DNSName
   DatabaseEndpoint:
