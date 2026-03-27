@@ -348,7 +348,7 @@ Deno.serve(async (req) => {
       action = 'deploy',
       aws_region = 'us-east-1',
       environment = 'production',
-      domain_name = 'api.aurora-osi.io',
+      domain_name = 'api.aurora-osi.com',
     } = requestBody;
 
     const stackName = `aurora-osi-${environment}`;
