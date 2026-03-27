@@ -90,6 +90,10 @@ Deno.serve(async (req) => {
     const projectName = 'aurora-api-build';
     const creds = { region, accessKeyId, secretAccessKey };
 
+    if (!githubToken) {
+      return Response.json({ error: 'GITHUB_TOKEN not set' }, { status: 400 });
+    }
+
     const body = await req.json().catch(() => ({}));
     const action = body.action || 'start';
 
@@ -125,11 +129,16 @@ Deno.serve(async (req) => {
     }
 
     // Create or update project with NO_SOURCE (git clone in buildspec)
+    // Inject token directly into buildspec commands (env vars don't expand in NO_SOURCE)
+    const buildspecWithToken = JSON.parse(JSON.stringify(BUILDSPEC));
+    buildspecWithToken.phases.pre_build.commands[1] = 
+      `git clone --depth 1 https://${githubToken}@github.com/aurora-osi/aurora-osi-production.git repo`;
+
     const projectDef = {
       name: projectName,
       source: {
         type: 'NO_SOURCE',
-        buildspec: JSON.stringify(BUILDSPEC),
+        buildspec: JSON.stringify(buildspecWithToken),
       },
       artifacts: { type: 'NO_ARTIFACTS' },
       environment: {
@@ -137,9 +146,7 @@ Deno.serve(async (req) => {
         image: 'aws/codebuild/standard:7.0',
         computeType: 'BUILD_GENERAL1_MEDIUM',
         privilegedMode: true,
-        environmentVariables: [
-          { name: 'GITHUB_TOKEN', value: githubToken, type: 'PLAINTEXT' },
-        ],
+        environmentVariables: [],
       },
       serviceRole: `arn:aws:iam::${accountId}:role/aurora-codebuild-role`,
       timeoutInMinutes: 30,
