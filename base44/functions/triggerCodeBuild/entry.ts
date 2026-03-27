@@ -168,7 +168,7 @@ Deno.serve(async (req) => {
         },
         build: {
           commands: [
-            `docker build -f aurora_vnext/infra/docker/Dockerfile.api -t ${repoUri}:latest -t ${repoUri}:$CODEBUILD_RESOLVED_SOURCE_VERSION aurora_vnext/`
+            `docker build -f infra/docker/Dockerfile.api -t ${repoUri}:latest -t ${repoUri}:$CODEBUILD_RESOLVED_SOURCE_VERSION .`
           ]
         },
         post_build: {
@@ -181,8 +181,9 @@ Deno.serve(async (req) => {
       }
     };
 
-    const createRes = await awsRequest({
-      service: 'codebuild', target: 'CodeBuild_20161006.CreateProject',
+    // Update project if exists, create if not
+    const updateRes = await awsRequest({
+      service: 'codebuild', target: 'CodeBuild_20161006.UpdateProject',
       body: {
         name: projectName,
         source: {
@@ -195,16 +196,35 @@ Deno.serve(async (req) => {
           type: 'LINUX_CONTAINER',
           image: 'aws/codebuild/standard:7.0',
           computeType: 'BUILD_GENERAL1_MEDIUM',
-          privilegedMode: true, // required for Docker
+          privilegedMode: true,
         },
         serviceRole: `arn:aws:iam::${accountId}:role/${roleName}`,
-        timeoutInMinutes: 30,
       },
       ...creds
     });
 
-    if (!createRes.ok && !createRes.data.__type?.includes('ResourceAlreadyExists')) {
-      return Response.json({ error: `Failed to create project: ${JSON.stringify(createRes.data)}` }, { status: 500 });
+    if (!updateRes.ok) {
+      // Project doesn't exist yet — create it
+      const createRes = await awsRequest({
+        service: 'codebuild', target: 'CodeBuild_20161006.CreateProject',
+        body: {
+          name: projectName,
+          source: { type: 'GITHUB', location: githubRepo, buildspec: JSON.stringify(buildspec) },
+          artifacts: { type: 'NO_ARTIFACTS' },
+          environment: {
+            type: 'LINUX_CONTAINER',
+            image: 'aws/codebuild/standard:7.0',
+            computeType: 'BUILD_GENERAL1_MEDIUM',
+            privilegedMode: true,
+          },
+          serviceRole: `arn:aws:iam::${accountId}:role/${roleName}`,
+          timeoutInMinutes: 30,
+        },
+        ...creds
+      });
+      if (!createRes.ok) {
+        return Response.json({ error: `Failed to create/update project: ${JSON.stringify(createRes.data)}` }, { status: 500 });
+      }
     }
 
     // ── Start the build ──
