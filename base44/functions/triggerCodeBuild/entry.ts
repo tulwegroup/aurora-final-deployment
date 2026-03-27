@@ -9,24 +9,24 @@ const BUILDSPEC = {
   phases: {
     pre_build: {
       commands: [
-        'echo "Cloning repository..."',
-        'git clone --depth 1 https://$GITHUB_TOKEN@github.com/tulwegroup/aurora-final-deployment.git repo',
-        'cd repo',
+        'echo "Cloning Aurora vNext repository..."',
+        'git clone --depth 1 https://$GITHUB_TOKEN@github.com/tulwegroup/aurora-final-deployment.git /tmp/aurora',
+        'cd /tmp/aurora',
         'echo "Logging in to Amazon ECR..."',
         'aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 368331615566.dkr.ecr.us-east-1.amazonaws.com',
-        'cat > Dockerfile.aws << "EOF"\nFROM public.ecr.aws/docker/library/python:3.11-slim\nWORKDIR /app\nRUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*\nRUN echo \'from fastapi import FastAPI\\napp = FastAPI()\\n@app.get(\\"/health/live\\")\\ndef health():\\n    return {\"status\": \"alive\"}\' > main.py\nRUN pip install --no-cache-dir fastapi uvicorn\nEXPOSE 8000\nHEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD curl -f http://localhost:8000/health/live || exit 1\nCMD [\"python\", \"-m\", \"uvicorn\", \"main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]\nEOF',
       ]
     },
     build: {
       commands: [
-        'echo "Building Docker image..."',
-        'docker build -f Dockerfile.aws -t 368331615566.dkr.ecr.us-east-1.amazonaws.com/aurora-api:latest .',
+        'echo "Building Aurora vNext Docker image from Dockerfile.api..."',
+        'docker build -f infra/docker/Dockerfile.api -t 368331615566.dkr.ecr.us-east-1.amazonaws.com/aurora-api:latest .',
       ]
     },
     post_build: {
       commands: [
-        'echo "Pushing image..."',
+        'echo "Pushing image to ECR..."',
         'docker push 368331615566.dkr.ecr.us-east-1.amazonaws.com/aurora-api:latest',
+        'echo "Image pushed successfully"'
       ]
     }
   }
