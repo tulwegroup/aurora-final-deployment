@@ -8,6 +8,11 @@ Parameters:
     AllowedValues: [development, staging, production]
     Description: Deployment environment
   
+  DeploymentId:
+    Type: String
+    Default: v1
+    Description: Unique deployment identifier (timestamp or version) for resource naming
+  
   DockerImage:
     Type: String
     Description: ECR Docker image URI (e.g., 123456789.dkr.ecr.us-east-1.amazonaws.com/aurora-api:latest)
@@ -192,7 +197,7 @@ Resources:
   AuroraDBInstance1:
     Type: AWS::RDS::DBInstance
     Properties:
-      DBInstanceIdentifier: aurora-db-instance-1
+      DBInstanceIdentifier: !Sub 'aurora-db-instance-1-${DeploymentId}'
       DBInstanceClass: db.t3.small
       Engine: aurora-postgresql
       DBClusterIdentifier: !Ref AuroraDBCluster
@@ -203,7 +208,7 @@ Resources:
   AuroraDBInstance2:
     Type: AWS::RDS::DBInstance
     Properties:
-      DBInstanceIdentifier: aurora-db-instance-2
+      DBInstanceIdentifier: !Sub 'aurora-db-instance-2-${DeploymentId}'
       DBInstanceClass: db.t3.small
       Engine: aurora-postgresql
       DBClusterIdentifier: !Ref AuroraDBCluster
