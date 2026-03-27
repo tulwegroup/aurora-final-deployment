@@ -496,7 +496,15 @@ Deno.serve(async (req) => {
     let cfRes = await cfRequest({ action: 'CreateStack', params: cfParams, ...creds });
     let cfAction = 'CREATE_IN_PROGRESS';
 
-    if (!cfRes.ok && cfRes.xml.includes('AlreadyExistsException')) {
+    if (!cfRes.ok && (cfRes.xml.includes('ROLLBACK_IN_PROGRESS') || cfRes.xml.includes('DELETE_IN_PROGRESS'))) {
+      return Response.json({
+        status: 'pending',
+        message: `Stack ${stackName} is in rollback/deletion. Please wait 5 minutes, then retry.`,
+        stackName,
+        region: aws_region,
+        estimatedTime: '5 minutes'
+      }, { status: 409 });
+    } else if (!cfRes.ok && cfRes.xml.includes('AlreadyExistsException')) {
       cfRes = await cfRequest({ action: 'UpdateStack', params: cfParams, ...creds });
       cfAction = 'UPDATE_IN_PROGRESS';
     } else if (!cfRes.ok && cfRes.xml.includes('DELETE_IN_PROGRESS')) {
