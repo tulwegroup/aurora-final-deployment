@@ -37,10 +37,11 @@ export default function GoLiveChecklist() {
 
     // 1. CloudFormation Stack Status
     try {
-      const cfRes = await base44.functions.invoke('validateDeployment', {});
+      const cfRes = await base44.functions.invoke('checkCloudFormationStatus', {});
       results.cloudformation = {
-        complete: cfRes.data.checks?.cloudformation?.status?.includes('COMPLETE'),
-        status: cfRes.data.checks?.cloudformation?.status || 'UNKNOWN',
+        complete: cfRes.data.complete,
+        status: cfRes.data.status,
+        albDns: cfRes.data.albDns,
         detail: 'CloudFormation stack deployed'
       };
     } catch (e) {
@@ -49,11 +50,12 @@ export default function GoLiveChecklist() {
 
     // 2. ECS Tasks Running
     try {
-      const cfRes = await base44.functions.invoke('validateDeployment', {});
+      const ecsRes = await base44.functions.invoke('checkECSTaskHealth', {});
       results.ecs = {
-        complete: cfRes.data.checks?.alb?.healthy,
-        status: cfRes.data.checks?.alb?.status || 'Unknown',
-        detail: 'ECS tasks deployed and ALB configured'
+        complete: ecsRes.data.healthy,
+        status: ecsRes.data.runningCount + '/' + ecsRes.data.taskCount + ' running',
+        taskCount: ecsRes.data.taskCount,
+        detail: ecsRes.data.detail
       };
     } catch (e) {
       results.ecs = { complete: false, status: 'ERROR', detail: e.message };
@@ -61,28 +63,42 @@ export default function GoLiveChecklist() {
 
     // 3. RDS Database
     try {
-      const cfRes = await base44.functions.invoke('validateDeployment', {});
+      const dbHost = Deno.env.get('AURORA_DB_HOST');
       results.rds = {
-        complete: cfRes.data.checks?.rds?.healthy,
-        endpoint: cfRes.data.checks?.rds?.endpoint,
+        complete: !!dbHost,
+        endpoint: dbHost || 'Not configured',
         detail: 'Aurora PostgreSQL database ready'
       };
     } catch (e) {
       results.rds = { complete: false, detail: e.message };
     }
 
-    // 4. API Endpoint (via environment)
+    // 4. ALB Health
+    try {
+      const albRes = await base44.functions.invoke('checkALBHealth', {});
+      results.alb = {
+        complete: albRes.data.healthy,
+        status: albRes.data.state,
+        dnsName: albRes.data.dnsName,
+        healthyTargets: albRes.data.healthyTargets,
+        detail: albRes.data.detail
+      };
+    } catch (e) {
+      results.alb = { complete: false, status: 'ERROR', detail: e.message };
+    }
+
+    // 5. API Endpoint (via environment)
     results.api = {
       complete: true,
       endpoint: 'https://api.aurora-osi.io',
       detail: 'API endpoint configured'
     };
 
-    // 5. DNS Configuration (manual check)
+    // 6. DNS Configuration (manual check)
     results.dns = {
       complete: false,
       detail: 'Requires manual DNS configuration',
-      action: 'Point api.aurora-osi.io CNAME to ALB endpoint (check AWS Console)'
+      action: 'Point api.aurora-osi.io CNAME to ' + (results.cloudformation.albDns || 'ALB endpoint')
     };
 
     setChecks(results);
@@ -187,6 +203,29 @@ export default function GoLiveChecklist() {
                     Endpoint: <span className="font-mono">{checks.rds.endpoint}</span>
                   </p>
                 )}
+              </CardContent>
+            </Card>
+
+            {/* ALB Health */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  {checks.alb?.complete ? (
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                  ) : (
+                    <AlertCircle className="w-5 h-5 text-yellow-600" />
+                  )}
+                  Application Load Balancer
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm space-y-2">
+                <p className="text-muted-foreground">{checks.alb?.detail}</p>
+                <p className="text-xs">
+                  DNS: <span className="font-mono">{checks.alb?.dnsName}</span>
+                </p>
+                <p className="text-xs">
+                  Healthy Targets: {checks.alb?.healthyTargets}
+                </p>
               </CardContent>
             </Card>
 
