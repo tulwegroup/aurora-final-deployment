@@ -253,7 +253,7 @@ Resources:
       Protocol: HTTP
       VpcId: !Ref AuroraVPC
       TargetType: ip
-      HealthCheckPath: /health
+      HealthCheckPath: /health/live
 
   HTTPListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
