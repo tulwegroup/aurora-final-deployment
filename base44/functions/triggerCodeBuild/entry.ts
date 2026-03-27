@@ -1,21 +1,41 @@
 /**
- * triggerCodeBuild — Create CodeBuild project (if needed) and trigger a build
- * Pulls from GitHub, builds Docker image using repo's Dockerfile, pushes to ECR
+ * triggerCodeBuild — Build + push Aurora API Docker image to ECR
+ * Uses inline buildspec (no GitHub), NO_SOURCE CodeBuild.
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
-async function hmacSHA256(key, data) {
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    typeof key === 'string' ? new TextEncoder().encode(key) : key,
-    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
-  );
-  return new Uint8Array(await crypto.subtle.sign('HMAC', cryptoKey, new TextEncoder().encode(data)));
-}
+const BUILDSPEC = {
+  version: '0.2',
+  phases: {
+    pre_build: {
+      commands: [
+        'echo "Logging in to Amazon ECR..."',
+        'aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 368331615566.dkr.ecr.us-east-1.amazonaws.com',
+      ]
+    },
+    build: {
+      commands: [
+        'echo "Building Docker image..."',
+        'docker build -f Dockerfile.minimal -t 368331615566.dkr.ecr.us-east-1.amazonaws.com/aurora-api:latest .',
+      ]
+    },
+    post_build: {
+      commands: [
+        'echo "Pushing image..."',
+        'docker push 368331615566.dkr.ecr.us-east-1.amazonaws.com/aurora-api:latest',
+      ]
+    }
+  }
+};
 
 async function sha256Hex(data) {
   const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(data));
   return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function hmacSHA256(key, data) {
+  const cryptoKey = await crypto.subtle.importKey('raw', typeof key === 'string' ? new TextEncoder().encode(key) : key, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return new Uint8Array(await crypto.subtle.sign('HMAC', cryptoKey, new TextEncoder().encode(data)));
 }
 
 function toHex(bytes) {
@@ -26,7 +46,6 @@ async function signV4({ method, host, path, body, region, service, accessKeyId, 
   const now = new Date();
   const amzDate = now.toISOString().replace(/[:\-]|\.\d{3}/g, '');
   const dateStamp = amzDate.slice(0, 8);
-
   const bodyHash = await sha256Hex(body);
   const headers = { 'content-type': 'application/x-amz-json-1.1', 'host': host, 'x-amz-date': amzDate };
   const signedHeaders = Object.keys(headers).sort().join(';');
@@ -49,72 +68,46 @@ async function awsRequest({ service, target, body, region, accessKeyId, secretAc
   headers['x-amz-target'] = target;
   const res = await fetch(`https://${host}/`, { method: 'POST', headers, body: bodyStr });
   const json = await res.json().catch(() => ({}));
-  return { ok: res.status < 300, status: res.status, data: json };
-}
-
-async function iamRequest({ action, params, accessKeyId, secretAccessKey }) {
-  const host = 'iam.amazonaws.com';
-  const region = 'us-east-1';
-  const service = 'iam';
-  const urlParams = new URLSearchParams({ Action: action, Version: '2010-05-08', ...params });
-  const bodyStr = urlParams.toString();
-
-  const now = new Date();
-  const amzDate = now.toISOString().replace(/[:\-]|\.\d{3}/g, '');
-  const dateStamp = amzDate.slice(0, 8);
-  const bodyHash = await sha256Hex(bodyStr);
-  const contentType = 'application/x-www-form-urlencoded';
-  const hdrs = { 'content-type': contentType, 'host': host, 'x-amz-date': amzDate };
-  const signedHeaders = Object.keys(hdrs).sort().join(';');
-  const canonicalHeaders = Object.keys(hdrs).sort().map(k => `${k}:${hdrs[k]}`).join('\n') + '\n';
-  const canonicalRequest = ['POST', '/', '', canonicalHeaders, signedHeaders, bodyHash].join('\n');
-  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
-  const stringToSign = ['AWS4-HMAC-SHA256', amzDate, credentialScope, await sha256Hex(canonicalRequest)].join('\n');
-  const kDate = await hmacSHA256(`AWS4${secretAccessKey}`, dateStamp);
-  const kRegion = await hmacSHA256(kDate, region);
-  const kService = await hmacSHA256(kRegion, service);
-  const kSigning = await hmacSHA256(kService, 'aws4_request');
-  const signature = toHex(await hmacSHA256(kSigning, stringToSign));
-  const authorization = `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
-
-  const res = await fetch(`https://${host}/`, {
-    method: 'POST',
-    headers: { 'content-type': contentType, 'host': host, 'x-amz-date': amzDate, 'authorization': authorization },
-    body: bodyStr
-  });
-  const text = await res.text();
-  return { ok: res.status < 300, text };
+  return { ok: res.status < 300, status: res.status, data: json, error: json.message };
 }
 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
-    if (user?.role !== 'admin') return Response.json({ error: 'Forbidden' }, { status: 403 });
+    if (user?.role !== 'admin') {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     const accessKeyId = Deno.env.get('AWS_ACCESS_KEY_ID');
     const secretAccessKey = Deno.env.get('AWS_SECRET_ACCESS_KEY');
-    const githubToken = Deno.env.get('GITHUB_TOKEN');
     const region = 'us-east-1';
     const accountId = '368331615566';
-    const repoUri = `${accountId}.dkr.ecr.${region}.amazonaws.com/aurora-api`;
     const projectName = 'aurora-api-build';
-    const githubRepo = 'https://github.com/tulwegroup/aurora-final-deployment';
     const creds = { region, accessKeyId, secretAccessKey };
 
-    const { action = 'start' } = await req.json().catch(() => ({}));
+    const body = await req.json().catch(() => ({}));
+    const action = body.action || 'start';
 
     if (action === 'status') {
       const res = await awsRequest({
-        service: 'codebuild', target: 'CodeBuild_20161006.ListBuildsForProject',
-        body: { projectName, sortOrder: 'DESCENDING' }, ...creds
+        service: 'codebuild',
+        target: 'CodeBuild_20161006.ListBuildsForProject',
+        body: { projectName, sortOrder: 'DESCENDING' },
+        ...creds
       });
-      if (!res.ok || !res.data.ids?.length) return Response.json({ status: 'no_builds', builds: [] });
+
+      if (!res.ok || !res.data.ids?.length) {
+        return Response.json({ status: 'no_builds', builds: [] });
+      }
 
       const batchRes = await awsRequest({
-        service: 'codebuild', target: 'CodeBuild_20161006.BatchGetBuilds',
-        body: { ids: res.data.ids.slice(0, 5) }, ...creds
+        service: 'codebuild',
+        target: 'CodeBuild_20161006.BatchGetBuilds',
+        body: { ids: res.data.ids.slice(0, 5) },
+        ...creds
       });
+
       const builds = (batchRes.data.builds || []).map(b => ({
         id: b.id,
         status: b.buildStatus,
@@ -123,119 +116,68 @@ Deno.serve(async (req) => {
         endTime: b.endTime,
         logs: b.logs?.deepLink,
       }));
+
       return Response.json({ status: 'ok', builds });
     }
 
-    const roleName = 'aurora-codebuild-role';
-    const trustPolicy = JSON.stringify({
-      Version: '2012-10-17',
-      Statement: [{ Effect: 'Allow', Principal: { Service: 'codebuild.amazonaws.com' }, Action: 'sts:AssumeRole' }]
-    });
-
-    await iamRequest({
-      action: 'CreateRole',
-      params: { RoleName: roleName, AssumeRolePolicyDocument: trustPolicy },
-      ...creds
-    });
-
-    for (const arn of [
-      'arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser',
-      'arn:aws:iam::aws:policy/CloudWatchLogsFullAccess',
-    ]) {
-      await iamRequest({ action: 'AttachRolePolicy', params: { RoleName: roleName, PolicyArn: arn }, ...creds });
-    }
-
-    await new Promise(r => setTimeout(r, 10000));
-
-    await awsRequest({
-      service: 'codebuild', target: 'CodeBuild_20161006.ImportSourceCredentials',
-      body: { serverType: 'GITHUB', authType: 'PERSONAL_ACCESS_TOKEN', token: githubToken },
-      ...creds
-    });
-
-    // Use the repo's Dockerfile.api directly
-    const buildspec = {
-      version: '0.2',
-      phases: {
-        pre_build: {
-          commands: [
-            `aws ecr get-login-password --region ${region} | docker login --username AWS --password-stdin ${accountId}.dkr.ecr.${region}.amazonaws.com`,
-          ]
-        },
-        build: {
-          commands: [
-            `docker build -f aurora_vnext/infra/docker/Dockerfile.api -t ${repoUri}:latest -t ${repoUri}:$CODEBUILD_RESOLVED_SOURCE_VERSION .`
-          ]
-        },
-        post_build: {
-          commands: [
-            `docker push ${repoUri}:latest`,
-            `docker push ${repoUri}:$CODEBUILD_RESOLVED_SOURCE_VERSION`,
-            `echo Built and pushed: ${repoUri}:latest`
-          ]
-        }
-      }
+    // Create or update project
+    const projectDef = {
+      name: projectName,
+      source: {
+        type: 'NO_SOURCE',
+        buildspec: JSON.stringify(BUILDSPEC),
+      },
+      artifacts: { type: 'NO_ARTIFACTS' },
+      environment: {
+        type: 'LINUX_CONTAINER',
+        image: 'aws/codebuild/standard:7.0',
+        computeType: 'BUILD_GENERAL1_MEDIUM',
+        privilegedMode: true,
+      },
+      serviceRole: `arn:aws:iam::${accountId}:role/aurora-codebuild-role`,
+      timeoutInMinutes: 30,
     };
 
     const updateRes = await awsRequest({
-      service: 'codebuild', target: 'CodeBuild_20161006.UpdateProject',
-      body: {
-        name: projectName,
-        source: { type: 'GITHUB', location: githubRepo, buildspec: JSON.stringify(buildspec) },
-        artifacts: { type: 'NO_ARTIFACTS' },
-        environment: {
-          type: 'LINUX_CONTAINER',
-          image: 'aws/codebuild/standard:7.0',
-          computeType: 'BUILD_GENERAL1_MEDIUM',
-          privilegedMode: true,
-        },
-        serviceRole: `arn:aws:iam::${accountId}:role/${roleName}`,
-      },
+      service: 'codebuild',
+      target: 'CodeBuild_20161006.UpdateProject',
+      body: projectDef,
       ...creds
     });
 
     if (!updateRes.ok) {
       const createRes = await awsRequest({
-        service: 'codebuild', target: 'CodeBuild_20161006.CreateProject',
-        body: {
-          name: projectName,
-          source: { type: 'GITHUB', location: githubRepo, buildspec: JSON.stringify(buildspec) },
-          artifacts: { type: 'NO_ARTIFACTS' },
-          environment: {
-            type: 'LINUX_CONTAINER',
-            image: 'aws/codebuild/standard:7.0',
-            computeType: 'BUILD_GENERAL1_MEDIUM',
-            privilegedMode: true,
-          },
-          serviceRole: `arn:aws:iam::${accountId}:role/${roleName}`,
-          timeoutInMinutes: 30,
-        },
+        service: 'codebuild',
+        target: 'CodeBuild_20161006.CreateProject',
+        body: projectDef,
         ...creds
       });
       if (!createRes.ok) {
-        return Response.json({ error: `Create failed: ${JSON.stringify(createRes.data)}` }, { status: 500 });
+        return Response.json({ error: `Create failed: ${createRes.error}` }, { status: 500 });
       }
     }
 
+    // Start build
     const buildRes = await awsRequest({
-      service: 'codebuild', target: 'CodeBuild_20161006.StartBuild',
+      service: 'codebuild',
+      target: 'CodeBuild_20161006.StartBuild',
       body: { projectName },
       ...creds
     });
 
     if (!buildRes.ok) {
-      return Response.json({ error: `Build start failed: ${JSON.stringify(buildRes.data)}` }, { status: 500 });
+      return Response.json({ error: `Build start failed: ${buildRes.error}` }, { status: 500 });
     }
 
     const build = buildRes.data.build;
     return Response.json({
       status: 'success',
-      message: 'Build started using repo Dockerfile.api',
+      message: 'Build started',
       buildId: build.id,
       buildStatus: build.buildStatus,
-      logsUrl: build.logs?.deepLink || `https://console.aws.amazon.com/codesuite/codebuild/${accountId}/projects/${projectName}`,
+      logsUrl: `https://console.aws.amazon.com/codesuite/codebuild/${accountId}/projects/${projectName}`,
       estimatedTime: '5-10 minutes',
-      imageTag: `${repoUri}:latest`,
+      imageTag: `${accountId}.dkr.ecr.${region}.amazonaws.com/aurora-api:latest`,
     });
 
   } catch (error) {
