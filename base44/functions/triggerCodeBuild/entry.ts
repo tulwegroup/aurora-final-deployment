@@ -26,6 +26,7 @@ async function signV4({ method, host, path, body, region, service, accessKeyId, 
   const now = new Date();
   const amzDate = now.toISOString().replace(/[:\-]|\.\d{3}/g, '');
   const dateStamp = amzDate.slice(0, 8);
+
   const bodyHash = await sha256Hex(body);
   const headers = { 'content-type': 'application/x-amz-json-1.1', 'host': host, 'x-amz-date': amzDate };
   const signedHeaders = Object.keys(headers).sort().join(';');
@@ -147,7 +148,7 @@ Deno.serve(async (req) => {
       await iamRequest({ action: 'AttachRolePolicy', params: { RoleName: roleName, PolicyArn: arn }, ...creds });
     }
 
-    // Wait for IAM propagation (IAM is eventually consistent)
+    // Wait for IAM propagation
     await new Promise(r => setTimeout(r, 10000));
 
     // ── Register GitHub credentials ──
@@ -170,9 +171,8 @@ Deno.serve(async (req) => {
         },
         build: {
           commands: [
-            // Write a patched Dockerfile that copies source BEFORE pip install
-            `cat > /tmp/Dockerfile.patched << 'DOCKERFILE'\nFROM python:3.11-slim\nWORKDIR /app\nRUN apt-get update && apt-get install -y --no-install-recommends build-essential libpq-dev curl && rm -rf /var/lib/apt/lists/*\nCOPY src/aurora_vnext/pyproject.toml ./\nRUN python3 -c "import tomllib, subprocess, sys; d=tomllib.load(open(\x27pyproject.toml\x27,\x27rb\x27)); deps=d.get(\x27project\x27,{}).get(\x27dependencies\x27,[]); subprocess.check_call([sys.executable,\x27-m\x27,\x27pip\x27,\x27install\x27,\x27--no-cache-dir\x27]+deps)"\nCOPY src/aurora_vnext/app ./app\nCOPY src/aurora_vnext/ ./\nEXPOSE 8000\nCMD [\"uvicorn\", \"app.main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]\nDOCKERFILE`,
-            `docker build -f /tmp/Dockerfile.patched -t ${repoUri}:latest -t ${repoUri}:$CODEBUILD_RESOLVED_SOURCE_VERSION .`
+            `cat > Dockerfile.build << 'EOF'\nFROM python:3.11-slim\nWORKDIR /app\nRUN apt-get update && apt-get install -y --no-install-recommends build-essential libpq-dev curl && rm -rf /var/lib/apt/lists/*\nCOPY aurora_vnext/pyproject.toml .\nRUN pip install --no-cache-dir -q build\nRUN cd /tmp && python3 -c "import tomllib; d=tomllib.load(open('/app/pyproject.toml','rb')); deps=d.get('project',{}).get('dependencies',[]); [print(x) for x in deps]" | xargs pip install --no-cache-dir -q\nCOPY aurora_vnext/app ./app\nCOPY aurora_vnext/ .\nEXPOSE 8000\nCMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]\nEOF`,
+            `docker build -f Dockerfile.build -t ${repoUri}:latest -t ${repoUri}:$CODEBUILD_RESOLVED_SOURCE_VERSION .`
           ]
         },
         post_build: {
@@ -185,16 +185,12 @@ Deno.serve(async (req) => {
       }
     };
 
-    // Update project if exists, create if not
+    // Update or create project
     const updateRes = await awsRequest({
       service: 'codebuild', target: 'CodeBuild_20161006.UpdateProject',
       body: {
         name: projectName,
-        source: {
-          type: 'GITHUB',
-          location: githubRepo,
-          buildspec: JSON.stringify(buildspec),
-        },
+        source: { type: 'GITHUB', location: githubRepo, buildspec: JSON.stringify(buildspec) },
         artifacts: { type: 'NO_ARTIFACTS' },
         environment: {
           type: 'LINUX_CONTAINER',
@@ -208,7 +204,6 @@ Deno.serve(async (req) => {
     });
 
     if (!updateRes.ok) {
-      // Project doesn't exist yet — create it
       const createRes = await awsRequest({
         service: 'codebuild', target: 'CodeBuild_20161006.CreateProject',
         body: {
@@ -245,7 +240,7 @@ Deno.serve(async (req) => {
     const build = buildRes.data.build;
     return Response.json({
       status: 'success',
-      message: 'Build started! Docker image will be built from GitHub and pushed to ECR.',
+      message: 'Build started with corrected Dockerfile paths',
       buildId: build.id,
       buildStatus: build.buildStatus,
       logsUrl: build.logs?.deepLink || `https://console.aws.amazon.com/codesuite/codebuild/${accountId}/projects/${projectName}/build/${encodeURIComponent(build.id)}/log`,
