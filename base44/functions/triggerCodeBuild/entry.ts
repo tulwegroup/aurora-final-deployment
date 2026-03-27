@@ -132,7 +132,7 @@ Deno.serve(async (req) => {
     // Inject token directly into buildspec commands (env vars don't expand in NO_SOURCE)
     const buildspecWithToken = JSON.parse(JSON.stringify(BUILDSPEC));
     buildspecWithToken.phases.pre_build.commands[1] = 
-      `git clone --depth 1 https://${githubToken}@github.com/aurora-osi/aurora-osi-production.git repo`;
+      `git clone --depth 1 https://${githubToken}@github.com/tulwegroup/aurora-final-deployment.git repo`;
 
     const projectDef = {
       name: projectName,
