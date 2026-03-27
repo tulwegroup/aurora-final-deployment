@@ -223,9 +223,9 @@ Resources:
 
   GEESecretKey:
     Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
-      Name: aurora-osi/gee/service-account
-      SecretString: !Ref GEEServiceAccountKey
 
   ECSCluster:
     Type: AWS::ECS::Cluster
@@ -237,9 +237,9 @@ Resources:
 
   CloudWatchLogGroup:
     Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
-      LogGroupName: /ecs/aurora-api
-      RetentionInDays: 30
 
   ALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
@@ -312,6 +312,16 @@ Outputs:
   DataRoomBucketName:
     Value: !Ref DataRoomBucket`;
 
+async function cfRequest({ action, params, region, accessKeyId, secretAccessKey }) {
+  const host = `cloudformation.${region}.amazonaws.com`;
+  const urlParams = new URLSearchParams({ Action: action, Version: '2010-05-15', ...params });
+  const bodyStr = urlParams.toString();
+  const signedHeaders = await signV4({ method: 'POST', host, path: '/', body: bodyStr, region, service: 'cloudformation', accessKeyId, secretAccessKey });
+  const res = await fetch(`https://${host}/`, { method: 'POST', headers: signedHeaders, body: bodyStr });
+  const xml = await res.text();
+  return { ok: res.ok, xml, status: res.status };
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -330,6 +340,62 @@ Deno.serve(async (req) => {
     if (!awsAccessKeyId || !awsSecretAccessKey) {
       return Response.json({ error: 'AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY required' }, { status: 400 });
     }
+
+    const requestBody = await req.json();
+    const {
+      action = 'deploy',
+      aws_region = 'us-east-1',
+      environment = 'production',
+      domain_name = 'api.aurora-osi.io',
+    } = requestBody;
+
+    const stackName = `aurora-osi-${environment}`;
+    const creds = { region: aws_region, accessKeyId: awsAccessKeyId, secretAccessKey: awsSecretAccessKey };
+
+    // ── Describe stack events (for diagnosis) ──
+    if (action === 'describe_events') {
+      const { ok, xml } = await cfRequest({ action: 'DescribeStackEvents', params: { StackName: stackName }, ...creds });
+      const events = [];
+      const regex = /<member>(.*?)<\/member>/gs;
+      let match;
+      while ((match = regex.exec(xml)) !== null) {
+        const block = match[1];
+        const get = (tag) => { const m = block.match(new RegExp(`<${tag}>([^<]*)</${tag}>`)); return m ? m[1] : null; };
+        events.push({
+          time: get('Timestamp'),
+          resource: get('LogicalResourceId'),
+          type: get('ResourceType'),
+          status: get('ResourceStatus'),
+          reason: get('ResourceStatusReason'),
+        });
+      }
+      return Response.json({ events: events.slice(0, 20) });
+    }
+
+    // ── Describe stack status ──
+    if (action === 'describe_stack') {
+      const { ok, xml } = await cfRequest({ action: 'DescribeStacks', params: { StackName: stackName }, ...creds });
+      const statusMatch = xml.match(/<StackStatus>([^<]+)<\/StackStatus>/);
+      const statusReasonMatch = xml.match(/<StackStatusReason>([^<]+)<\/StackStatusReason>/);
+      return Response.json({
+        stackName,
+        status: statusMatch ? statusMatch[1] : 'UNKNOWN',
+        reason: statusReasonMatch ? statusReasonMatch[1] : null,
+        raw: xml.slice(0, 1000),
+      });
+    }
+
+    // ── Delete stack ──
+    if (action === 'delete_stack') {
+      const { ok, xml } = await cfRequest({ action: 'DeleteStack', params: { StackName: stackName }, ...creds });
+      if (!ok) {
+        const msgMatch = xml.match(/<Message>([^<]+)<\/Message>/);
+        return Response.json({ error: msgMatch ? msgMatch[1] : xml.slice(0, 300) }, { status: 400 });
+      }
+      return Response.json({ status: 'success', message: `Stack ${stackName} deletion initiated. Wait ~5 mins then redeploy.` });
+    }
+
+    // ── Deploy (create or update) ──
     if (!dbPassword || !certificateArn || !geeServiceAccountKey) {
       return Response.json({ error: 'Missing: AURORA_DB_PASSWORD, AURORA_CERTIFICATE_ARN, or AURORA_GEE_SERVICE_ACCOUNT_KEY' }, { status: 400 });
     }
@@ -337,78 +403,50 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'AURORA_DB_PASSWORD contains a Secrets Manager ARN — store the actual password string instead.' }, { status: 400 });
     }
 
-    const requestBody = await req.json();
-    const {
-      aws_region = 'us-east-1',
-      environment = 'production',
-      domain_name = 'api.aurora-osi.io',
-    } = requestBody;
-
-    const stackName = `aurora-osi-${environment}`;
     const geeKeyBase64 = btoa(geeServiceAccountKey);
+    const cfParams = {
+      StackName: stackName,
+      TemplateBody: CF_TEMPLATE,
+      'Parameters.member.1.ParameterKey': 'Environment',
+      'Parameters.member.1.ParameterValue': environment,
+      'Parameters.member.2.ParameterKey': 'DBPassword',
+      'Parameters.member.2.ParameterValue': dbPassword,
+      'Parameters.member.3.ParameterKey': 'DomainName',
+      'Parameters.member.3.ParameterValue': domain_name,
+      'Parameters.member.4.ParameterKey': 'CertificateArn',
+      'Parameters.member.4.ParameterValue': certificateArn,
+      'Parameters.member.5.ParameterKey': 'GEEServiceAccountKey',
+      'Parameters.member.5.ParameterValue': geeKeyBase64,
+      'Capabilities.member.1': 'CAPABILITY_NAMED_IAM',
+      'Capabilities.member.2': 'CAPABILITY_AUTO_EXPAND',
+    };
 
-    // Build CloudFormation request
-    const params = new URLSearchParams();
-    params.append('Action', 'CreateStack');
-    params.append('Version', '2010-05-15');
-    params.append('StackName', stackName);
-    params.append('TemplateBody', CF_TEMPLATE);
-    params.append('Parameters.member.1.ParameterKey', 'Environment');
-    params.append('Parameters.member.1.ParameterValue', environment);
-    params.append('Parameters.member.2.ParameterKey', 'DBPassword');
-    params.append('Parameters.member.2.ParameterValue', dbPassword);
-    params.append('Parameters.member.3.ParameterKey', 'DomainName');
-    params.append('Parameters.member.3.ParameterValue', domain_name);
-    params.append('Parameters.member.4.ParameterKey', 'CertificateArn');
-    params.append('Parameters.member.4.ParameterValue', certificateArn);
-    params.append('Parameters.member.5.ParameterKey', 'GEEServiceAccountKey');
-    params.append('Parameters.member.5.ParameterValue', geeKeyBase64);
-    params.append('Capabilities.member.1', 'CAPABILITY_NAMED_IAM');
-    params.append('Capabilities.member.2', 'CAPABILITY_AUTO_EXPAND');
+    // Try CreateStack first; if exists try UpdateStack
+    let cfRes = await cfRequest({ action: 'CreateStack', params: cfParams, ...creds });
+    let cfAction = 'CREATE_IN_PROGRESS';
 
-    const host = `cloudformation.${aws_region}.amazonaws.com`;
-    const bodyStr = params.toString();
-
-    const signedHeaders = await signV4({
-      method: 'POST',
-      host,
-      path: '/',
-      body: bodyStr,
-      region: aws_region,
-      service: 'cloudformation',
-      accessKeyId: awsAccessKeyId,
-      secretAccessKey: awsSecretAccessKey,
-    });
-
-    const cfResponse = await fetch(`https://${host}/`, {
-      method: 'POST',
-      headers: signedHeaders,
-      body: bodyStr,
-    });
-
-    const xmlResponse = await cfResponse.text();
-
-    if (!cfResponse.ok) {
-      // Extract friendly error from XML
-      const msgMatch = xmlResponse.match(/<Message>([^<]+)<\/Message>/);
-      const friendlyError = msgMatch ? msgMatch[1] : xmlResponse.slice(0, 500);
-      return Response.json({ error: `CloudFormation: ${friendlyError}` }, { status: cfResponse.status });
+    if (!cfRes.ok && cfRes.xml.includes('AlreadyExistsException')) {
+      cfRes = await cfRequest({ action: 'UpdateStack', params: cfParams, ...creds });
+      cfAction = 'UPDATE_IN_PROGRESS';
     }
 
-    const stackIdMatch = xmlResponse.match(/<StackId>([^<]+)<\/StackId>/);
-    const stackId = stackIdMatch ? stackIdMatch[1] : null;
+    if (!cfRes.ok) {
+      const msgMatch = cfRes.xml.match(/<Message>([^<]+)<\/Message>/);
+      return Response.json({ error: `CloudFormation: ${msgMatch ? msgMatch[1] : cfRes.xml.slice(0, 300)}` }, { status: cfRes.status });
+    }
 
+    const stackIdMatch = cfRes.xml.match(/<StackId>([^<]+)<\/StackId>/);
     return Response.json({
       status: 'success',
-      message: 'Stack creation initiated!',
-      stackId,
+      message: 'Stack operation initiated!',
+      stackId: stackIdMatch ? stackIdMatch[1] : null,
       stackName,
       region: aws_region,
-      action: 'CREATE_IN_PROGRESS',
+      action: cfAction,
       estimatedTime: '15-25 minutes',
       consoleUrl: `https://console.aws.amazon.com/cloudformation/home?region=${aws_region}#/stacks`,
       nextSteps: [
-        'Stack creation in progress',
+        'Stack operation in progress',
         'Resources: VPC, RDS Aurora, ALB, ECS Cluster, S3 Data Room',
         `Monitor at: https://console.aws.amazon.com/cloudformation/home?region=${aws_region}`,
         'Point DNS to ALB once stack is complete',
