@@ -12,10 +12,24 @@ import { CheckCircle, AlertCircle, Loader2, ExternalLink } from 'lucide-react';
 export default function GoLiveChecklist() {
   const [checks, setChecks] = useState({});
   const [loading, setLoading] = useState(true);
+  const [executing, setExecuting] = useState(false);
+  const [launchReport, setLaunchReport] = useState(null);
 
   useEffect(() => {
     runChecks();
   }, []);
+
+  const handleExecuteGoLive = async () => {
+    setExecuting(true);
+    try {
+      const res = await base44.functions.invoke('executeGoLive', {});
+      setLaunchReport(res.data);
+    } catch (err) {
+      alert('Go-live execution error: ' + err.message);
+    } finally {
+      setExecuting(false);
+    }
+  };
 
   const runChecks = async () => {
     setLoading(true);
@@ -242,18 +256,70 @@ export default function GoLiveChecklist() {
               onClick={runChecks}
               variant="outline"
               className="flex-1"
+              disabled={executing}
             >
               Refresh Status
             </Button>
             {allComplete && (
               <Button
-                className="flex-1 bg-green-700 hover:bg-green-800"
-                onClick={() => alert('🚀 Aurora production is live! Monitor at AWS CloudWatch.')}
+                className="flex-1 bg-green-700 hover:bg-green-800 gap-2"
+                onClick={handleExecuteGoLive}
+                disabled={executing}
               >
-                ✅ Go Live
+                {executing ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                {executing ? 'Executing...' : '🚀 EXECUTE GO LIVE'}
               </Button>
             )}
           </div>
+
+          {/* Launch Report */}
+          {launchReport && (
+            <Card className="border-green-300 bg-green-50 mt-6">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <CheckCircle className="w-5 h-5 text-green-600" />
+                  🚀 Aurora Production Live
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm space-y-4 text-green-900">
+                <div>
+                  <p className="font-medium mb-2">Status: {launchReport.status}</p>
+                  <p className="text-xs text-green-800/70">All {launchReport.progress.total} infrastructure checks passed</p>
+                </div>
+
+                <div className="bg-white/50 rounded p-3 space-y-3 text-xs">
+                  <p className="font-medium">Infrastructure Summary:</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <span className="text-green-800/70">Region:</span> {launchReport.launchReport.region}
+                    </div>
+                    <div>
+                      <span className="text-green-800/70">Database:</span> {launchReport.launchReport.database.version}
+                    </div>
+                    <div>
+                      <span className="text-green-800/70">Compute:</span> {launchReport.launchReport.compute.instances} Fargate tasks
+                    </div>
+                    <div>
+                      <span className="text-green-800/70">Replicas:</span> {launchReport.launchReport.database.replicas} Aurora nodes
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white/50 rounded p-3">
+                  <p className="font-medium mb-2">Next Steps:</p>
+                  <ul className="space-y-1 text-xs text-green-800/70">
+                    {launchReport.nextSteps.map((step, i) => (
+                      <li key={i}>{step}</li>
+                    ))}
+                  </ul>
+                </div>
+
+                <p className="text-xs text-green-800/70 border-t border-green-200 pt-2">
+                  Executed: {new Date(launchReport.timestamp).toLocaleString()}
+                </p>
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
     </div>
