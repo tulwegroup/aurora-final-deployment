@@ -1,6 +1,6 @@
 /**
  * triggerCodeBuild — Create CodeBuild project (if needed) and trigger a build
- * Pulls from GitHub, builds Docker image, pushes to ECR
+ * Pulls from GitHub, builds Docker image using repo's Dockerfile, pushes to ECR
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
@@ -104,7 +104,6 @@ Deno.serve(async (req) => {
 
     const { action = 'start' } = await req.json().catch(() => ({}));
 
-    // ── Get build status ──
     if (action === 'status') {
       const res = await awsRequest({
         service: 'codebuild', target: 'CodeBuild_20161006.ListBuildsForProject',
@@ -127,7 +126,6 @@ Deno.serve(async (req) => {
       return Response.json({ status: 'ok', builds });
     }
 
-    // ── Create IAM role for CodeBuild ──
     const roleName = 'aurora-codebuild-role';
     const trustPolicy = JSON.stringify({
       Version: '2012-10-17',
@@ -140,7 +138,6 @@ Deno.serve(async (req) => {
       ...creds
     });
 
-    // Attach policies
     for (const arn of [
       'arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser',
       'arn:aws:iam::aws:policy/CloudWatchLogsFullAccess',
@@ -148,44 +145,38 @@ Deno.serve(async (req) => {
       await iamRequest({ action: 'AttachRolePolicy', params: { RoleName: roleName, PolicyArn: arn }, ...creds });
     }
 
-    // Wait for IAM propagation
     await new Promise(r => setTimeout(r, 10000));
 
-    // ── Register GitHub credentials ──
     await awsRequest({
       service: 'codebuild', target: 'CodeBuild_20161006.ImportSourceCredentials',
       body: { serverType: 'GITHUB', authType: 'PERSONAL_ACCESS_TOKEN', token: githubToken },
       ...creds
     });
 
-    // ── Create CodeBuild project ──
+    // Use the repo's Dockerfile.api directly
     const buildspec = {
       version: '0.2',
       phases: {
         pre_build: {
           commands: [
             `aws ecr get-login-password --region ${region} | docker login --username AWS --password-stdin ${accountId}.dkr.ecr.${region}.amazonaws.com`,
-            `docker pull public.ecr.aws/docker/library/python:3.11-slim`,
-            `docker tag public.ecr.aws/docker/library/python:3.11-slim python:3.11-slim`
           ]
         },
         build: {
           commands: [
-            `cat > Dockerfile.build << 'EOF'\nFROM python:3.11-slim\nWORKDIR /app\nRUN apt-get update && apt-get install -y --no-install-recommends build-essential libpq-dev curl && rm -rf /var/lib/apt/lists/*\nCOPY aurora_vnext/pyproject.toml .\nRUN pip install --no-cache-dir -q build\nRUN cd /tmp && python3 -c "import tomllib; d=tomllib.load(open('/app/pyproject.toml','rb')); deps=d.get('project',{}).get('dependencies',[]); [print(x) for x in deps]" | xargs pip install --no-cache-dir -q\nCOPY aurora_vnext/app ./app\nCOPY aurora_vnext/ .\nEXPOSE 8000\nCMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]\nEOF`,
-            `docker build -f Dockerfile.build -t ${repoUri}:latest -t ${repoUri}:$CODEBUILD_RESOLVED_SOURCE_VERSION .`
+            `docker build -f aurora_vnext/infra/docker/Dockerfile.api -t ${repoUri}:latest -t ${repoUri}:$CODEBUILD_RESOLVED_SOURCE_VERSION .`
           ]
         },
         post_build: {
           commands: [
             `docker push ${repoUri}:latest`,
             `docker push ${repoUri}:$CODEBUILD_RESOLVED_SOURCE_VERSION`,
-            `echo Build complete: ${repoUri}:latest`
+            `echo Built and pushed: ${repoUri}:latest`
           ]
         }
       }
     };
 
-    // Update or create project
     const updateRes = await awsRequest({
       service: 'codebuild', target: 'CodeBuild_20161006.UpdateProject',
       body: {
@@ -222,11 +213,10 @@ Deno.serve(async (req) => {
         ...creds
       });
       if (!createRes.ok) {
-        return Response.json({ error: `Failed to create/update project: ${JSON.stringify(createRes.data)}` }, { status: 500 });
+        return Response.json({ error: `Create failed: ${JSON.stringify(createRes.data)}` }, { status: 500 });
       }
     }
 
-    // ── Start the build ──
     const buildRes = await awsRequest({
       service: 'codebuild', target: 'CodeBuild_20161006.StartBuild',
       body: { projectName },
@@ -234,16 +224,16 @@ Deno.serve(async (req) => {
     });
 
     if (!buildRes.ok) {
-      return Response.json({ error: `Failed to start build: ${JSON.stringify(buildRes.data)}` }, { status: 500 });
+      return Response.json({ error: `Build start failed: ${JSON.stringify(buildRes.data)}` }, { status: 500 });
     }
 
     const build = buildRes.data.build;
     return Response.json({
       status: 'success',
-      message: 'Build started with corrected Dockerfile paths',
+      message: 'Build started using repo Dockerfile.api',
       buildId: build.id,
       buildStatus: build.buildStatus,
-      logsUrl: build.logs?.deepLink || `https://console.aws.amazon.com/codesuite/codebuild/${accountId}/projects/${projectName}/build/${encodeURIComponent(build.id)}/log`,
+      logsUrl: build.logs?.deepLink || `https://console.aws.amazon.com/codesuite/codebuild/${accountId}/projects/${projectName}`,
       estimatedTime: '5-10 minutes',
       imageTag: `${repoUri}:latest`,
     });
