@@ -148,14 +148,13 @@ Deno.serve(async (req) => {
     // Create or update project with NO_SOURCE (git clone in buildspec)
     // Inject token directly into buildspec commands (env vars don't expand in NO_SOURCE)
     const buildspecWithToken = JSON.parse(JSON.stringify(BUILDSPEC));
-    buildspecWithToken.phases.pre_build.commands[1] = 
-      `git clone --depth 1 https://${githubToken}@github.com/tulwegroup/aurora-final-deployment.git repo`;
+    // Remove git clone — use embedded Python app instead
 
     const projectDef = {
       name: projectName,
       source: {
         type: 'NO_SOURCE',
-        buildspec: JSON.stringify(buildspecWithToken),
+        buildspec: JSON.stringify(BUILDSPEC),
       },
       artifacts: { type: 'NO_ARTIFACTS' },
       environment: {
