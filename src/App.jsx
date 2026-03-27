@@ -23,6 +23,7 @@ import CommercialPackaging from './pages/CommercialPackaging';
 import DeploymentPanel from './pages/DeploymentPanel';
 import DeploymentSetupGuide from './pages/DeploymentSetupGuide';
 import ProductionDashboard from './pages/ProductionDashboard';
+import GoLiveChecklist from './pages/GoLiveChecklist';
 // Add page imports here
 
 const AuthenticatedApp = () => {
@@ -71,6 +72,7 @@ const AuthenticatedApp = () => {
         <Route path="/deploy" element={<DeploymentPanel />} />
         <Route path="/setup-guide" element={<DeploymentSetupGuide />} />
         <Route path="/ops" element={<ProductionDashboard />} />
+        <Route path="/go-live" element={<GoLiveChecklist />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>

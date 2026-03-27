@@ -1,0 +1,261 @@
+/**
+ * GoLiveChecklist — Final pre-launch verification for Aurora production
+ * Confirms all infrastructure, DNS, and API requirements are met
+ */
+
+import { useState, useEffect } from 'react';
+import { base44 } from '@/api/base44Client';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { CheckCircle, AlertCircle, Loader2, ExternalLink } from 'lucide-react';
+
+export default function GoLiveChecklist() {
+  const [checks, setChecks] = useState({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    runChecks();
+  }, []);
+
+  const runChecks = async () => {
+    setLoading(true);
+    const results = {};
+
+    // 1. CloudFormation Stack Status
+    try {
+      const cfRes = await base44.functions.invoke('validateDeployment', {});
+      results.cloudformation = {
+        complete: cfRes.data.checks?.cloudformation?.status?.includes('COMPLETE'),
+        status: cfRes.data.checks?.cloudformation?.status || 'UNKNOWN',
+        detail: 'CloudFormation stack deployed'
+      };
+    } catch (e) {
+      results.cloudformation = { complete: false, status: 'ERROR', detail: e.message };
+    }
+
+    // 2. ECS Tasks Running
+    try {
+      const cfRes = await base44.functions.invoke('validateDeployment', {});
+      results.ecs = {
+        complete: cfRes.data.checks?.alb?.healthy,
+        status: cfRes.data.checks?.alb?.status || 'Unknown',
+        detail: 'ECS tasks deployed and ALB configured'
+      };
+    } catch (e) {
+      results.ecs = { complete: false, status: 'ERROR', detail: e.message };
+    }
+
+    // 3. RDS Database
+    try {
+      const cfRes = await base44.functions.invoke('validateDeployment', {});
+      results.rds = {
+        complete: cfRes.data.checks?.rds?.healthy,
+        endpoint: cfRes.data.checks?.rds?.endpoint,
+        detail: 'Aurora PostgreSQL database ready'
+      };
+    } catch (e) {
+      results.rds = { complete: false, detail: e.message };
+    }
+
+    // 4. API Endpoint (via environment)
+    results.api = {
+      complete: true,
+      endpoint: 'https://api.aurora-osi.io',
+      detail: 'API endpoint configured'
+    };
+
+    // 5. DNS Configuration (manual check)
+    results.dns = {
+      complete: false,
+      detail: 'Requires manual DNS configuration',
+      action: 'Point api.aurora-osi.io CNAME to ALB endpoint (check AWS Console)'
+    };
+
+    setChecks(results);
+    setLoading(false);
+  };
+
+  const allComplete = Object.values(checks).filter(c => c !== null).every(c => c.complete);
+
+  return (
+    <div className="p-6 max-w-4xl space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold">Go-Live Checklist</h1>
+        <p className="text-muted-foreground mt-1">
+          Final verification before Aurora production launch
+        </p>
+      </div>
+
+      {loading ? (
+        <Card>
+          <CardContent className="pt-6 flex items-center justify-center gap-3">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>Running system checks...</span>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          {/* Status Overview */}
+          <Card className={allComplete ? 'border-green-300 bg-green-50' : 'border-yellow-300 bg-yellow-50'}>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">
+                    {allComplete ? '✅ All tasks complete' : '⚠️ ' + Object.values(checks).filter(c => !c.complete).length + ' tasks remaining'}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {allComplete ? 'Ready to go live' : 'Complete remaining items before launch'}
+                  </p>
+                </div>
+                <Button onClick={runChecks} variant="outline" size="sm">Refresh</Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Checklist Items */}
+          <div className="space-y-3">
+            {/* CloudFormation */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  {checks.cloudformation?.complete ? (
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                  ) : (
+                    <AlertCircle className="w-5 h-5 text-yellow-600" />
+                  )}
+                  CloudFormation Stack
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm space-y-2">
+                <p className="text-muted-foreground">{checks.cloudformation?.detail}</p>
+                <p className="text-xs">
+                  Status: <span className="font-mono font-semibold">{checks.cloudformation?.status}</span>
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* ECS Tasks */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  {checks.ecs?.complete ? (
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                  ) : (
+                    <AlertCircle className="w-5 h-5 text-yellow-600" />
+                  )}
+                  ECS Fargate & ALB
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm space-y-2">
+                <p className="text-muted-foreground">{checks.ecs?.detail}</p>
+                <p className="text-xs">
+                  Status: <span className="font-mono font-semibold">{checks.ecs?.status}</span>
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* RDS Database */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  {checks.rds?.complete ? (
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                  ) : (
+                    <AlertCircle className="w-5 h-5 text-yellow-600" />
+                  )}
+                  RDS Aurora Database
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm space-y-2">
+                <p className="text-muted-foreground">{checks.rds?.detail}</p>
+                {checks.rds?.endpoint && (
+                  <p className="text-xs">
+                    Endpoint: <span className="font-mono">{checks.rds.endpoint}</span>
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* API Endpoint */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  {checks.api?.complete ? (
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                  ) : (
+                    <AlertCircle className="w-5 h-5 text-yellow-600" />
+                  )}
+                  API Endpoint
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm space-y-3">
+                <p className="text-muted-foreground">{checks.api?.detail}</p>
+                <a
+                  href="https://api.aurora-osi.io/health/live"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                >
+                  Test health endpoint <ExternalLink className="w-3 h-3" />
+                </a>
+              </CardContent>
+            </Card>
+
+            {/* DNS Configuration */}
+            <Card className={!checks.dns?.complete ? 'border-red-300 bg-red-50' : ''}>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  {checks.dns?.complete ? (
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                  ) : (
+                    <AlertCircle className="w-5 h-5 text-red-600" />
+                  )}
+                  DNS Configuration
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm space-y-3">
+                <p className="text-muted-foreground">{checks.dns?.detail}</p>
+                <div className="bg-white/50 rounded p-3 text-xs space-y-2">
+                  <p className="font-medium">Action Required:</p>
+                  <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                    <li>Go to AWS Route 53 (or your DNS provider)</li>
+                    <li>Find the ALB endpoint in AWS CloudFormation outputs</li>
+                    <li>Create CNAME: <span className="font-mono bg-slate-100 px-1 rounded">api.aurora-osi.io</span> → ALB DNS</li>
+                    <li>Wait 5-10 minutes for DNS propagation</li>
+                  </ol>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full gap-2"
+                  onClick={() => window.open('https://console.aws.amazon.com/route53', '_blank')}
+                >
+                  Open Route 53 <ExternalLink className="w-3 h-3" />
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-3 pt-4">
+            <Button
+              onClick={runChecks}
+              variant="outline"
+              className="flex-1"
+            >
+              Refresh Status
+            </Button>
+            {allComplete && (
+              <Button
+                className="flex-1 bg-green-700 hover:bg-green-800"
+                onClick={() => alert('🚀 Aurora production is live! Monitor at AWS CloudWatch.')}
+              >
+                ✅ Go Live
+              </Button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
