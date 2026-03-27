@@ -318,7 +318,7 @@ Resources:
               Value: !Ref Environment
           Secrets:
             - Name: AURORA_GEE_SERVICE_ACCOUNT_KEY
-              ValueFrom: !GetAtt GEESecretsManagerSecret.Arn
+              ValueFrom: 'arn:aws:secretsmanager:*:*:secret:aurora-gee-key*'
           HealthCheck:
             Command:
               - CMD-SHELL
