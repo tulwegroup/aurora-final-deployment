@@ -10,7 +10,7 @@ const BUILDSPEC = {
     pre_build: {
       commands: [
         'echo "Cloning repository..."',
-        'git clone --depth 1 https://$GITHUB_TOKEN@github.com/aurora-osi/aurora-osi-production.git repo',
+        'git clone --depth 1 https://$GITHUB_TOKEN@github.com/tulwegroup/aurora-final-deployment.git repo',
         'cd repo',
         'echo "Logging in to Amazon ECR..."',
         'aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 368331615566.dkr.ecr.us-east-1.amazonaws.com',
