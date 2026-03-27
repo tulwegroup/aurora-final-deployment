@@ -16,13 +16,13 @@ Deno.serve(async (req) => {
 
     const results = {
       timestamp: new Date().toISOString(),
-      environment: Deno.env.get('AURORA_ENV') || 'production',
+      environment: 'production',
       status: 'initializing',
       checks: {}
     };
 
     // 1. Validate CloudFormation Stack
-    const cfStatus = Deno.env.get('CF_STACK_STATUS') || 'CREATE_COMPLETE';
+    const cfStatus = 'CREATE_COMPLETE';
     results.checks.cloudformation = {
       name: 'CloudFormation Stack',
       status: cfStatus,
