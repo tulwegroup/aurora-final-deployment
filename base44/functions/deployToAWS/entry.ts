@@ -226,7 +226,6 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      Name: aurora-osi/gee/service-account
       Description: Google Earth Engine service account credentials
       SecretString: !Ref GEEServiceAccountKey
 
@@ -243,7 +242,6 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      LogGroupName: /ecs/aurora-api
       RetentionInDays: 30
 
   ALB:
