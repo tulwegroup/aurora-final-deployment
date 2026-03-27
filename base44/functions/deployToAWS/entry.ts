@@ -220,14 +220,6 @@ Resources:
       DBClusterIdentifier: !Ref AuroraDBCluster
       PubliclyAccessible: false
 
-  GEESecretKey:
-    Type: AWS::SecretsManager::Secret
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
-    Properties:
-      Description: Google Earth Engine service account credentials
-      SecretString: !Ref GEEServiceAccountKey
-
   ECSCluster:
     Type: AWS::ECS::Cluster
     Properties:
