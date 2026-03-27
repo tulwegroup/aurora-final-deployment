@@ -381,6 +381,12 @@ Resources:
               Value: !Ref DBPassword
             - Name: AURORA_GEE_SERVICE_ACCOUNT_KEY
               Value: !Ref GEEServiceAccountKey
+            - Name: AURORA_SECRET_KEY
+              Value: aurora-secret-key-production
+            - Name: AURORA_ADMIN_PASS
+              Value: aurora-admin-password
+            - Name: AURORA_ENV
+              Value: production
 
   ECSService:
     Type: AWS::ECS::Service
