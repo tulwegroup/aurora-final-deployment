@@ -372,7 +372,10 @@ Deno.serve(async (req) => {
           reason: get('ResourceStatusReason'),
         });
       }
-      return Response.json({ events: events.slice(0, 20) });
+      // Return ALL events but prioritise FAILED ones at the top
+      const failed = events.filter(e => e.status && e.status.includes('FAILED'));
+      const rest = events.filter(e => !e.status || !e.status.includes('FAILED'));
+      return Response.json({ failed_events: failed, all_events: [...failed, ...rest].slice(0, 30) });
     }
 
     // ── Describe stack status ──
