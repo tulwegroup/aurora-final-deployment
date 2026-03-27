@@ -58,8 +58,8 @@ Deno.serve(async (req) => {
     const accessKeyId = Deno.env.get('AWS_ACCESS_KEY_ID');
     const secretAccessKey = Deno.env.get('AWS_SECRET_ACCESS_KEY');
     const region = 'us-east-1';
-    const cluster = 'aurora-cluster';
-    const service = 'aurora-api';
+    const cluster = 'aurora-cluster-osi';
+    const service = 'aurora-osi-production';
 
     const creds = { region, accessKeyId, secretAccessKey };
 
