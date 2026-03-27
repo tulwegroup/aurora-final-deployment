@@ -477,7 +477,6 @@ Deno.serve(async (req) => {
     const stackName = `aurora-osi-${environment}`;
     const creds = { region: aws_region, accessKeyId: awsAccessKeyId, secretAccessKey: awsSecretAccessKey };
 
-    // Always use a single stable stack name — let CloudFormation handle DELETE/CREATE
     const cfParams = {
       StackName: stackName,
       TemplateBody: CF_TEMPLATE,
@@ -507,7 +506,7 @@ Deno.serve(async (req) => {
         stackName,
         region: aws_region,
         estimatedTime: '2 minutes'
-      });
+      }, { status: 409 });
     }
 
     if (!cfRes.ok) {
@@ -520,7 +519,7 @@ Deno.serve(async (req) => {
       status: 'success',
       message: 'Stack deployment initiated',
       stackId: stackIdMatch ? stackIdMatch[1] : null,
-      stackName: finalStackName,
+      stackName: stackName,
       region: aws_region,
       action: cfAction,
       estimatedTime: '15-25 minutes',
