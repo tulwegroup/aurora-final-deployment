@@ -514,7 +514,6 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'AURORA_DB_PASSWORD contains a Secrets Manager ARN — store the actual password string instead.' }, { status: 400 });
     }
 
-    const geeKeyBase64 = btoa(geeServiceAccountKey);
     const cfParams = {
       StackName: stackName,
       TemplateBody: CF_TEMPLATE,
@@ -527,7 +526,7 @@ Deno.serve(async (req) => {
       'Parameters.member.4.ParameterKey': 'CertificateArn',
       'Parameters.member.4.ParameterValue': certificateArn,
       'Parameters.member.5.ParameterKey': 'GEEServiceAccountKey',
-      'Parameters.member.5.ParameterValue': geeKeyBase64,
+      'Parameters.member.5.ParameterValue': geeServiceAccountKey,
       'Capabilities.member.1': 'CAPABILITY_NAMED_IAM',
       'Capabilities.member.2': 'CAPABILITY_AUTO_EXPAND',
     };
