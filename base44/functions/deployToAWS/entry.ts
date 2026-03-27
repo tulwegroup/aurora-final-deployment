@@ -377,9 +377,10 @@ Resources:
               Value: aurora_db
             - Name: AURORA_DB_PORT
               Value: '5432'
-          Secrets:
             - Name: AURORA_DB_PASSWORD
-              ValueFrom: !GetAtt GEESecretKey.Arn
+              Value: !Ref DBPassword
+            - Name: AURORA_GEE_SERVICE_ACCOUNT_KEY
+              Value: !Ref GEEServiceAccountKey
 
   ECSService:
     Type: AWS::ECS::Service
