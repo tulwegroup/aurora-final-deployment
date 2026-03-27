@@ -477,54 +477,7 @@ Deno.serve(async (req) => {
     const stackName = `aurora-osi-${environment}`;
     const creds = { region: aws_region, accessKeyId: awsAccessKeyId, secretAccessKey: awsSecretAccessKey };
 
-    if (action === 'describe_events') {
-      const { ok, xml } = await cfRequest({ action: 'DescribeStackEvents', params: { StackName: stackName }, ...creds });
-      const events = [];
-      const regex = /<member>(.*?)<\/member>/gs;
-      let match;
-      while ((match = regex.exec(xml)) !== null) {
-        const block = match[1];
-        const get = (tag) => { const m = block.match(new RegExp(`<${tag}>([^<]*)</${tag}>`)); return m ? m[1] : null; };
-        events.push({
-          time: get('Timestamp'),
-          resource: get('LogicalResourceId'),
-          type: get('ResourceType'),
-          status: get('ResourceStatus'),
-          reason: get('ResourceStatusReason'),
-        });
-      }
-      const failed = events.filter(e => e.status && e.status.includes('FAILED'));
-      const rest = events.filter(e => !e.status || !e.status.includes('FAILED'));
-      return Response.json({ failed_events: failed, all_events: [...failed, ...rest].slice(0, 30) });
-    }
-
-    if (action === 'describe_stack') {
-      const { ok, xml } = await cfRequest({ action: 'DescribeStacks', params: { StackName: stackName }, ...creds });
-      const statusMatch = xml.match(/<StackStatus>([^<]+)<\/StackStatus>/);
-      const statusReasonMatch = xml.match(/<StackStatusReason>([^<]+)<\/StackStatusReason>/);
-      return Response.json({
-        stackName,
-        status: statusMatch ? statusMatch[1] : 'UNKNOWN',
-        reason: statusReasonMatch ? statusReasonMatch[1] : null,
-      });
-    }
-
-    if (action === 'delete_stack') {
-      const retainResources = requestBody.retain_resources || [];
-      const deleteParams = { StackName: stackName };
-      retainResources.forEach((r, i) => { deleteParams[`RetainResources.member.${i + 1}`] = r; });
-      const { ok, xml } = await cfRequest({ action: 'DeleteStack', params: deleteParams, ...creds });
-      if (!ok) {
-        const msgMatch = xml.match(/<Message>([^<]+)<\/Message>/);
-        return Response.json({ error: msgMatch ? msgMatch[1] : xml.slice(0, 300) }, { status: 400 });
-      }
-      return Response.json({ status: 'success', message: `Stack ${stackName} deletion initiated.` });
-    }
-
-    if (!dbPassword || !certificateArn || !geeServiceAccountKey) {
-      return Response.json({ error: 'Missing: AURORA_DB_PASSWORD, AURORA_CERTIFICATE_ARN, or AURORA_GEE_SERVICE_ACCOUNT_KEY' }, { status: 400 });
-    }
-
+    // Always use a single stable stack name — let CloudFormation handle DELETE/CREATE
     const cfParams = {
       StackName: stackName,
       TemplateBody: CF_TEMPLATE,
@@ -541,26 +494,20 @@ Deno.serve(async (req) => {
       'Capabilities.member.1': 'CAPABILITY_NAMED_IAM',
     };
 
-    let stackStatus = null;
-    const describeRes = await cfRequest({ action: 'DescribeStacks', params: { StackName: stackName }, ...creds });
-    if (describeRes.ok) {
-      const statusMatch = describeRes.xml.match(/<StackStatus>([^<]+)<\/StackStatus>/);
-      stackStatus = statusMatch ? statusMatch[1] : null;
-    }
-
-    let finalStackName = stackName;
-    if (stackStatus && stackStatus.includes('DELETE_IN_PROGRESS')) {
-      const timestamp = Date.now().toString().slice(-6);
-      finalStackName = `${stackName}-${timestamp}`;
-      cfParams.StackName = finalStackName;
-    }
-
     let cfRes = await cfRequest({ action: 'CreateStack', params: cfParams, ...creds });
     let cfAction = 'CREATE_IN_PROGRESS';
 
     if (!cfRes.ok && cfRes.xml.includes('AlreadyExistsException')) {
       cfRes = await cfRequest({ action: 'UpdateStack', params: cfParams, ...creds });
       cfAction = 'UPDATE_IN_PROGRESS';
+    } else if (!cfRes.ok && cfRes.xml.includes('DELETE_IN_PROGRESS')) {
+      return Response.json({
+        status: 'pending',
+        message: `Stack ${stackName} is still being deleted. Please retry in 2 minutes.`,
+        stackName,
+        region: aws_region,
+        estimatedTime: '2 minutes'
+      });
     }
 
     if (!cfRes.ok) {
