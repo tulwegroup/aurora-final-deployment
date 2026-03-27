@@ -1,12 +1,10 @@
 /**
- * deployToAWS — Deploy Aurora OSI to AWS CloudFormation (Live)
- * Provisions ECS Fargate, RDS Aurora, ALB, S3 via CloudFormation API.
- * Template is loaded from the project's infra/cloudformation directory.
+ * deployToAWS — Deploy Aurora OSI to AWS CloudFormation
+ * Provisions ECS Fargate, RDS Aurora, ALB, S3
  */
 
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
-// --- AWS Sig V4 signing using Web Crypto API (async) ---
 async function hmacSHA256(key, data) {
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
@@ -53,7 +51,6 @@ async function signV4({ method, host, path, body, region, service, accessKeyId, 
   return { ...headers, authorization: `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}` };
 }
 
-// --- CloudFormation template (embedded) ---
 const CF_TEMPLATE = `AWSTemplateFormatVersion: '2010-09-09'
 Description: 'Aurora OSI Production Deployment - ECS Fargate + RDS + S3'
 
@@ -84,9 +81,6 @@ Resources:
       CidrBlock: 10.0.0.0/16
       EnableDnsHostnames: true
       EnableDnsSupport: true
-      Tags:
-        - Key: Name
-          Value: aurora-vpc
 
   PublicSubnet1:
     Type: AWS::EC2::Subnet
@@ -220,6 +214,15 @@ Resources:
       DBClusterIdentifier: !Ref AuroraDBCluster
       PubliclyAccessible: false
 
+  AuroraDBInstance2:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: aurora-db-instance-2
+      DBInstanceClass: db.t3.medium
+      Engine: aurora-postgresql
+      DBClusterIdentifier: !Ref AuroraDBCluster
+      PubliclyAccessible: false
+
   ECSCluster:
     Type: AWS::ECS::Cluster
     Properties:
@@ -230,10 +233,100 @@ Resources:
 
   CloudWatchLogGroup:
     Type: AWS::Logs::LogGroup
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
     Properties:
+      LogGroupName: /ecs/aurora-api
       RetentionInDays: 30
+
+  GEESecretsManagerSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: aurora-gee-key
+      SecretString: !Ref GEEServiceAccountKey
+
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
+      Policies:
+        - PolicyName: SecretsAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: 'secretsmanager:GetSecretValue'
+                Resource: !GetAtt GEESecretsManagerSecret.Arn
+
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AmazonS3FullAccess'
+        - 'arn:aws:iam::aws:policy/CloudWatchLogsFullAccess'
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: aurora-api
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '512'
+      Memory: '1024'
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: aurora-api
+          Image: 368331615566.dkr.ecr.us-east-1.amazonaws.com/aurora-api:latest
+          PortMappings:
+            - ContainerPort: 8000
+              Protocol: tcp
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref CloudWatchLogGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: ecs
+          Environment:
+            - Name: AURORA_DB_HOST
+              Value: !GetAtt AuroraDBCluster.Endpoint.Address
+            - Name: AURORA_DB_USER
+              Value: aurora_admin
+            - Name: AURORA_DB_NAME
+              Value: aurora_db
+            - Name: AURORA_DB_PASSWORD
+              Value: !Ref DBPassword
+            - Name: AURORA_SECRET_KEY
+              Value: aurora-secret-key-prod
+            - Name: AURORA_ADMIN_PASS
+              Value: aurora-admin-pass
+            - Name: AURORA_ENV
+              Value: !Ref Environment
+          Secrets:
+            - Name: AURORA_GEE_SERVICE_ACCOUNT_KEY
+              ValueFrom: !GetAtt GEESecretsManagerSecret.Arn
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - curl -f http://localhost:8000/health/live || exit 1
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 60
 
   ALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
@@ -254,11 +347,14 @@ Resources:
       VpcId: !Ref AuroraVPC
       TargetType: ip
       HealthCheckPath: /health/live
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
 
   HTTPListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
-      LoadBalancerArn: !Ref ALB
+      LoadBalancerArn: !GetAtt ALB.LoadBalancerArn
       Port: 80
       Protocol: HTTP
       DefaultActions:
@@ -271,114 +367,14 @@ Resources:
   HTTPSListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
-      LoadBalancerArn: !Ref ALB
+      LoadBalancerArn: !GetAtt ALB.LoadBalancerArn
       Port: 443
       Protocol: HTTPS
       Certificates:
         - CertificateArn: !Ref CertificateArn
       DefaultActions:
         - Type: forward
-          TargetGroupArn: !Ref TargetGroup
-
-  DataRoomBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub 'aurora-osi-data-room-\${AWS::AccountId}'
-      VersioningConfiguration:
-        Status: Enabled
-      BucketEncryption:
-        ServerSideEncryptionConfiguration:
-          - ServerSideEncryptionByDefault:
-              SSEAlgorithm: AES256
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
-
-  ECSTaskRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-            Action: 'sts:AssumeRole'
-      ManagedPolicyArns:
-        - 'arn:aws:iam::aws:policy/AmazonS3FullAccess'
-        - 'arn:aws:iam::aws:policy/AmazonRDSFullAccess'
-        - 'arn:aws:iam::aws:policy/SecretsManagerReadWrite'
-
-  ECSExecutionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-            Action: 'sts:AssumeRole'
-      ManagedPolicyArns:
-        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
-        - 'arn:aws:iam::aws:policy/CloudWatchLogsFullAccess'
-      Policies:
-        - PolicyName: ECRAccess
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - 'ecr:GetAuthorizationToken'
-                  - 'ecr:BatchGetImage'
-                  - 'ecr:GetDownloadUrlForLayer'
-                Resource: '*'
-
-  TaskDefinition:
-    Type: AWS::ECS::TaskDefinition
-    Properties:
-      Family: aurora-api
-      NetworkMode: awsvpc
-      RequiresCompatibilities:
-        - FARGATE
-      Cpu: '512'
-      Memory: '1024'
-      ExecutionRoleArn: !GetAtt ECSExecutionRole.Arn
-      TaskRoleArn: !GetAtt ECSTaskRole.Arn
-      ContainerDefinitions:
-        - Name: aurora-api
-          Image: 368331615566.dkr.ecr.us-east-1.amazonaws.com/aurora-api:latest
-          PortMappings:
-            - ContainerPort: 8000
-              HostPort: 8000
-              Protocol: tcp
-          LogConfiguration:
-            LogDriver: awslogs
-            Options:
-              awslogs-group: !Ref CloudWatchLogGroup
-              awslogs-region: !Ref 'AWS::Region'
-              awslogs-stream-prefix: ecs
-          Environment:
-            - Name: AURORA_DB_HOST
-              Value: !GetAtt AuroraDBCluster.Endpoint.Address
-            - Name: AURORA_DB_USER
-              Value: aurora_admin
-            - Name: AURORA_DB_NAME
-              Value: aurora_db
-            - Name: AURORA_DB_PORT
-              Value: '5432'
-            - Name: AURORA_DB_PASSWORD
-              Value: !Ref DBPassword
-            - Name: AURORA_GEE_SERVICE_ACCOUNT_KEY
-              Value: !Ref GEEServiceAccountKey
-            - Name: AURORA_SECRET_KEY
-              Value: aurora-secret-key-production
-            - Name: AURORA_ADMIN_PASS
-              Value: aurora-admin-password
-            - Name: AURORA_ENV
-              Value: production
+          TargetGroupArn: !GetAtt TargetGroup.TargetGroupArn
 
   ECSService:
     Type: AWS::ECS::Service
@@ -400,15 +396,27 @@ Resources:
       LoadBalancers:
         - ContainerName: aurora-api
           ContainerPort: 8000
-          TargetGroupArn: !Ref TargetGroup
+          TargetGroupArn: !GetAtt TargetGroup.TargetGroupArn
       DeploymentConfiguration:
         MaximumPercent: 200
         MinimumHealthyPercent: 100
       HealthCheckGracePeriodSeconds: 60
 
+  DataRoomBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'aurora-osi-data-room-\${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
 Outputs:
   APIEndpoint:
-    Value: !Sub 'https://\${DomainName}/api/v1'
+    Value: !Sub 'https://\${DomainName}'
   ALBDNSName:
     Value: !GetAtt ALB.DNSName
   DatabaseEndpoint:
@@ -442,7 +450,7 @@ Deno.serve(async (req) => {
     const geeServiceAccountKey = Deno.env.get('AURORA_GEE_SERVICE_ACCOUNT_KEY');
 
     if (!awsAccessKeyId || !awsSecretAccessKey) {
-      return Response.json({ error: 'AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY required' }, { status: 400 });
+      return Response.json({ error: 'AWS credentials missing' }, { status: 400 });
     }
 
     const requestBody = await req.json();
@@ -450,13 +458,12 @@ Deno.serve(async (req) => {
       action = 'deploy',
       aws_region = 'us-east-1',
       environment = 'production',
-      domain_name = 'api.aurora-osi.com',
+      domain_name = 'api.aurora-osi.io',
     } = requestBody;
 
     const stackName = `aurora-osi-${environment}`;
     const creds = { region: aws_region, accessKeyId: awsAccessKeyId, secretAccessKey: awsSecretAccessKey };
 
-    // ── Describe stack events (for diagnosis) ──
     if (action === 'describe_events') {
       const { ok, xml } = await cfRequest({ action: 'DescribeStackEvents', params: { StackName: stackName }, ...creds });
       const events = [];
@@ -473,13 +480,11 @@ Deno.serve(async (req) => {
           reason: get('ResourceStatusReason'),
         });
       }
-      // Return ALL events but prioritise FAILED ones at the top
       const failed = events.filter(e => e.status && e.status.includes('FAILED'));
       const rest = events.filter(e => !e.status || !e.status.includes('FAILED'));
       return Response.json({ failed_events: failed, all_events: [...failed, ...rest].slice(0, 30) });
     }
 
-    // ── Describe stack status ──
     if (action === 'describe_stack') {
       const { ok, xml } = await cfRequest({ action: 'DescribeStacks', params: { StackName: stackName }, ...creds });
       const statusMatch = xml.match(/<StackStatus>([^<]+)<\/StackStatus>/);
@@ -488,13 +493,10 @@ Deno.serve(async (req) => {
         stackName,
         status: statusMatch ? statusMatch[1] : 'UNKNOWN',
         reason: statusReasonMatch ? statusReasonMatch[1] : null,
-        raw: xml.slice(0, 1000),
       });
     }
 
-    // ── Delete stack ──
     if (action === 'delete_stack') {
-      // When stuck in DELETE_FAILED, retain the blocking resources so deletion can complete
       const retainResources = requestBody.retain_resources || [];
       const deleteParams = { StackName: stackName };
       retainResources.forEach((r, i) => { deleteParams[`RetainResources.member.${i + 1}`] = r; });
@@ -503,15 +505,11 @@ Deno.serve(async (req) => {
         const msgMatch = xml.match(/<Message>([^<]+)<\/Message>/);
         return Response.json({ error: msgMatch ? msgMatch[1] : xml.slice(0, 300) }, { status: 400 });
       }
-      return Response.json({ status: 'success', message: `Stack ${stackName} deletion initiated. Wait ~5 mins then redeploy.` });
+      return Response.json({ status: 'success', message: `Stack ${stackName} deletion initiated.` });
     }
 
-    // ── Deploy (create or update) ──
     if (!dbPassword || !certificateArn || !geeServiceAccountKey) {
       return Response.json({ error: 'Missing: AURORA_DB_PASSWORD, AURORA_CERTIFICATE_ARN, or AURORA_GEE_SERVICE_ACCOUNT_KEY' }, { status: 400 });
-    }
-    if (dbPassword.startsWith('arn:aws:secretsmanager')) {
-      return Response.json({ error: 'AURORA_DB_PASSWORD contains a Secrets Manager ARN — store the actual password string instead.' }, { status: 400 });
     }
 
     const cfParams = {
@@ -528,19 +526,15 @@ Deno.serve(async (req) => {
       'Parameters.member.5.ParameterKey': 'GEEServiceAccountKey',
       'Parameters.member.5.ParameterValue': geeServiceAccountKey,
       'Capabilities.member.1': 'CAPABILITY_NAMED_IAM',
-      'Capabilities.member.2': 'CAPABILITY_AUTO_EXPAND',
     };
 
-    // Check if stack exists or is deleting
     let stackStatus = null;
-    const describeParams = { StackName: stackName };
-    const describeRes = await cfRequest({ action: 'DescribeStacks', params: describeParams, ...creds });
+    const describeRes = await cfRequest({ action: 'DescribeStacks', params: { StackName: stackName }, ...creds });
     if (describeRes.ok) {
       const statusMatch = describeRes.xml.match(/<StackStatus>([^<]+)<\/StackStatus>/);
       stackStatus = statusMatch ? statusMatch[1] : null;
     }
 
-    // If DELETE_IN_PROGRESS, use unique name to avoid conflict
     let finalStackName = stackName;
     if (stackStatus && stackStatus.includes('DELETE_IN_PROGRESS')) {
       const timestamp = Date.now().toString().slice(-6);
@@ -548,7 +542,6 @@ Deno.serve(async (req) => {
       cfParams.StackName = finalStackName;
     }
 
-    // Try CreateStack first; if exists try UpdateStack
     let cfRes = await cfRequest({ action: 'CreateStack', params: cfParams, ...creds });
     let cfAction = 'CREATE_IN_PROGRESS';
 
@@ -565,19 +558,13 @@ Deno.serve(async (req) => {
     const stackIdMatch = cfRes.xml.match(/<StackId>([^<]+)<\/StackId>/);
     return Response.json({
       status: 'success',
-      message: 'Stack operation initiated!',
+      message: 'Stack deployment initiated',
       stackId: stackIdMatch ? stackIdMatch[1] : null,
       stackName: finalStackName,
       region: aws_region,
       action: cfAction,
       estimatedTime: '15-25 minutes',
       consoleUrl: `https://console.aws.amazon.com/cloudformation/home?region=${aws_region}#/stacks`,
-      nextSteps: [
-        'Stack operation in progress',
-        'Resources: VPC, RDS Aurora, ALB, ECS Cluster, S3 Data Room',
-        `Monitor at: https://console.aws.amazon.com/cloudformation/home?region=${aws_region}`,
-        'Point DNS to ALB once stack is complete',
-      ],
     });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
