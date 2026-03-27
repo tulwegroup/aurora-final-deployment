@@ -170,7 +170,9 @@ Deno.serve(async (req) => {
         },
         build: {
           commands: [
-            `docker build -f src/aurora_vnext/infra/docker/Dockerfile.api -t ${repoUri}:latest -t ${repoUri}:$CODEBUILD_RESOLVED_SOURCE_VERSION src/aurora_vnext/`
+            // Write a patched Dockerfile that copies source BEFORE pip install
+            `cat > /tmp/Dockerfile.patched << 'DOCKERFILE'\nFROM python:3.11-slim\nWORKDIR /app\nRUN apt-get update && apt-get install -y --no-install-recommends build-essential libpq-dev curl && rm -rf /var/lib/apt/lists/*\nCOPY src/aurora_vnext/pyproject.toml ./\nCOPY src/aurora_vnext/app ./app\nRUN pip install --no-cache-dir .\nCOPY src/aurora_vnext/ ./\nEXPOSE 8000\nCMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]\nDOCKERFILE`,
+            `docker build -f /tmp/Dockerfile.patched -t ${repoUri}:latest -t ${repoUri}:$CODEBUILD_RESOLVED_SOURCE_VERSION .`
           ]
         },
         post_build: {
