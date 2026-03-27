@@ -1,6 +1,5 @@
 /**
- * triggerCodeBuild — Build + push Aurora API Docker image to ECR
- * Uses inline buildspec (no GitHub), NO_SOURCE CodeBuild.
+ * triggerCodeBuild — Build Aurora API using GitHub source + CodeBuild
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
@@ -120,12 +119,13 @@ Deno.serve(async (req) => {
       return Response.json({ status: 'ok', builds });
     }
 
-    // Create or update project
+    // Create or update project with GITHUB source
     const projectDef = {
       name: projectName,
       source: {
-        type: 'NO_SOURCE',
-        buildspec: JSON.stringify(BUILDSPEC),
+        type: 'GITHUB',
+        location: 'https://github.com/aurora-osi/aurora-osi-production.git',
+        gitCloneDepth: 1,
       },
       artifacts: { type: 'NO_ARTIFACTS' },
       environment: {
@@ -172,7 +172,7 @@ Deno.serve(async (req) => {
     const build = buildRes.data.build;
     return Response.json({
       status: 'success',
-      message: 'Build started',
+      message: 'Build started (GitHub source)',
       buildId: build.id,
       buildStatus: build.buildStatus,
       logsUrl: `https://console.aws.amazon.com/codesuite/codebuild/${accountId}/projects/${projectName}`,
