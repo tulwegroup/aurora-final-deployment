@@ -285,8 +285,8 @@ Resources:
       NetworkMode: awsvpc
       RequiresCompatibilities:
         - FARGATE
-      Cpu: '512'
-      Memory: '1024'
+      Cpu: '1024'
+      Memory: '2048'
       ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
       TaskRoleArn: !GetAtt ECSTaskRole.Arn
       ContainerDefinitions:
@@ -324,9 +324,9 @@ Resources:
               - CMD-SHELL
               - curl -f http://localhost:8000/health/live || exit 1
             Interval: 30
-            Timeout: 5
-            Retries: 3
-            StartPeriod: 60
+            Timeout: 10
+            Retries: 5
+            StartPeriod: 120
 
   ALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
@@ -383,7 +383,7 @@ Resources:
       ServiceName: aurora-osi-production
       Cluster: !Ref ECSCluster
       TaskDefinition: !Ref TaskDefinition
-      DesiredCount: 2
+      DesiredCount: 1
       LaunchType: FARGATE
       NetworkConfiguration:
         AwsvpcConfiguration:
