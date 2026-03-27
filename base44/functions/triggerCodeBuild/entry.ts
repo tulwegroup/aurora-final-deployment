@@ -1,5 +1,6 @@
 /**
  * triggerCodeBuild — Build Aurora API using GitHub source + CodeBuild
+ * Uses AWS CodeStar Connection (OAuth) for GitHub auth
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
@@ -80,6 +81,7 @@ Deno.serve(async (req) => {
 
     const accessKeyId = Deno.env.get('AWS_ACCESS_KEY_ID');
     const secretAccessKey = Deno.env.get('AWS_SECRET_ACCESS_KEY');
+    const codestarConnectionArn = Deno.env.get('CODESTAR_CONNECTION_ARN') || 'arn:aws:codestar-connections:us-east-1:368331615566:connection/aurora-github';
     const region = 'us-east-1';
     const accountId = '368331615566';
     const projectName = 'aurora-api-build';
@@ -119,14 +121,15 @@ Deno.serve(async (req) => {
       return Response.json({ status: 'ok', builds });
     }
 
-    // Create or update project with GITHUB source
+    // Create or update project with CodeStar GitHub connection (OAuth)
     const projectDef = {
       name: projectName,
       source: {
         type: 'GITHUB',
-        location: 'https://github.com/aurora-osi/aurora-osi-production.git',
+        location: 'https://github.com/aurora-osi/aurora-osi-production',
         gitCloneDepth: 1,
         buildspec: JSON.stringify(BUILDSPEC),
+        sourceIdentifier: codestarConnectionArn,
       },
       artifacts: { type: 'NO_ARTIFACTS' },
       environment: {
@@ -134,11 +137,8 @@ Deno.serve(async (req) => {
         image: 'aws/codebuild/standard:7.0',
         computeType: 'BUILD_GENERAL1_MEDIUM',
         privilegedMode: true,
-        environmentVariables: [
-          { name: 'GITHUB_TOKEN', value: Deno.env.get('GITHUB_TOKEN'), type: 'PLAINTEXT' },
-        ],
+        environmentVariables: [],
       },
-      sourceVersion: 'refs/heads/main',
       serviceRole: `arn:aws:iam::${accountId}:role/aurora-codebuild-role`,
       timeoutInMinutes: 30,
     };
@@ -166,7 +166,7 @@ Deno.serve(async (req) => {
     const buildRes = await awsRequest({
       service: 'codebuild',
       target: 'CodeBuild_20161006.StartBuild',
-      body: { projectName },
+      body: { projectName, sourceVersion: 'refs/heads/main' },
       ...creds
     });
 
@@ -177,7 +177,7 @@ Deno.serve(async (req) => {
     const build = buildRes.data.build;
     return Response.json({
       status: 'success',
-      message: 'Build started (GitHub source)',
+      message: 'Build started (GitHub OAuth via CodeStar Connection)',
       buildId: build.id,
       buildStatus: build.buildStatus,
       logsUrl: `https://console.aws.amazon.com/codesuite/codebuild/${accountId}/projects/${projectName}`,
