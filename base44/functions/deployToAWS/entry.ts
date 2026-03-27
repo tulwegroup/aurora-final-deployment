@@ -202,7 +202,7 @@ Resources:
     DeletionPolicy: Snapshot
     Properties:
       Engine: aurora-postgresql
-      EngineVersion: '15.4'
+      EngineVersion: '16.1'
       DatabaseName: aurora_db
       MasterUsername: aurora_admin
       MasterUserPassword: !Ref DBPassword
