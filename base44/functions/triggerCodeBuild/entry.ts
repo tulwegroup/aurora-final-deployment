@@ -171,7 +171,7 @@ Deno.serve(async (req) => {
         build: {
           commands: [
             // Write a patched Dockerfile that copies source BEFORE pip install
-            `cat > /tmp/Dockerfile.patched << 'DOCKERFILE'\nFROM python:3.11-slim\nWORKDIR /app\nRUN apt-get update && apt-get install -y --no-install-recommends build-essential libpq-dev curl && rm -rf /var/lib/apt/lists/*\nCOPY src/aurora_vnext/pyproject.toml ./\nCOPY src/aurora_vnext/app ./app\nRUN pip install --no-cache-dir .\nCOPY src/aurora_vnext/ ./\nEXPOSE 8000\nCMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]\nDOCKERFILE`,
+            `cat > /tmp/Dockerfile.patched << 'DOCKERFILE'\nFROM python:3.11-slim\nWORKDIR /app\nRUN apt-get update && apt-get install -y --no-install-recommends build-essential libpq-dev curl && rm -rf /var/lib/apt/lists/*\nCOPY src/aurora_vnext/pyproject.toml ./\nRUN python3 -c "import tomllib, subprocess, sys; d=tomllib.load(open(\x27pyproject.toml\x27,\x27rb\x27)); deps=d.get(\x27project\x27,{}).get(\x27dependencies\x27,[]); subprocess.check_call([sys.executable,\x27-m\x27,\x27pip\x27,\x27install\x27,\x27--no-cache-dir\x27]+deps)"\nCOPY src/aurora_vnext/app ./app\nCOPY src/aurora_vnext/ ./\nEXPOSE 8000\nCMD [\"uvicorn\", \"app.main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]\nDOCKERFILE`,
             `docker build -f /tmp/Dockerfile.patched -t ${repoUri}:latest -t ${repoUri}:$CODEBUILD_RESOLVED_SOURCE_VERSION .`
           ]
         },
