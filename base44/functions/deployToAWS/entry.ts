@@ -226,6 +226,9 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
+      Name: aurora-osi/gee/service-account
+      Description: Google Earth Engine service account credentials
+      SecretString: !Ref GEEServiceAccountKey
 
   ECSCluster:
     Type: AWS::ECS::Cluster
@@ -240,6 +243,8 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
+      LogGroupName: /ecs/aurora-api
+      RetentionInDays: 30
 
   ALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
@@ -387,7 +392,11 @@ Deno.serve(async (req) => {
 
     // ── Delete stack ──
     if (action === 'delete_stack') {
-      const { ok, xml } = await cfRequest({ action: 'DeleteStack', params: { StackName: stackName }, ...creds });
+      // When stuck in DELETE_FAILED, retain the blocking resources so deletion can complete
+      const retainResources = requestBody.retain_resources || [];
+      const deleteParams = { StackName: stackName };
+      retainResources.forEach((r, i) => { deleteParams[`RetainResources.member.${i + 1}`] = r; });
+      const { ok, xml } = await cfRequest({ action: 'DeleteStack', params: deleteParams, ...creds });
       if (!ok) {
         const msgMatch = xml.match(/<Message>([^<]+)<\/Message>/);
         return Response.json({ error: msgMatch ? msgMatch[1] : xml.slice(0, 300) }, { status: 400 });
