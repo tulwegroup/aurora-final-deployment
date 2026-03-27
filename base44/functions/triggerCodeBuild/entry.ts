@@ -134,7 +134,11 @@ Deno.serve(async (req) => {
         image: 'aws/codebuild/standard:7.0',
         computeType: 'BUILD_GENERAL1_MEDIUM',
         privilegedMode: true,
+        environmentVariables: [
+          { name: 'GITHUB_TOKEN', value: Deno.env.get('GITHUB_TOKEN'), type: 'PLAINTEXT' },
+        ],
       },
+      sourceVersion: 'refs/heads/main',
       serviceRole: `arn:aws:iam::${accountId}:role/aurora-codebuild-role`,
       timeoutInMinutes: 30,
     };
