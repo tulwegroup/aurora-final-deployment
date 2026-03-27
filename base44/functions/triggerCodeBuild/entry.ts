@@ -163,12 +163,17 @@ Deno.serve(async (req) => {
       phases: {
         pre_build: {
           commands: [
-            `aws ecr get-login-password --region ${region} | docker login --username AWS --password-stdin ${accountId}.dkr.ecr.${region}.amazonaws.com`
+            `aws ecr get-login-password --region ${region} | docker login --username AWS --password-stdin ${accountId}.dkr.ecr.${region}.amazonaws.com`,
+            `echo "=== Repo structure ==="`,
+            `find . -maxdepth 3 -name "Dockerfile*" 2>/dev/null || true`,
+            `ls -la`
           ]
         },
         build: {
           commands: [
-            `docker build -f infra/docker/Dockerfile.api -t ${repoUri}:latest -t ${repoUri}:$CODEBUILD_RESOLVED_SOURCE_VERSION .`
+            `DOCKERFILE=$(find . -name "Dockerfile.api" -o -name "Dockerfile" | head -1)`,
+            `echo "Using Dockerfile: $DOCKERFILE"`,
+            `docker build -f $DOCKERFILE -t ${repoUri}:latest -t ${repoUri}:$CODEBUILD_RESOLVED_SOURCE_VERSION $(dirname $DOCKERFILE | sed 's|/infra/docker||' | sed 's|/docker||')`
           ]
         },
         post_build: {
