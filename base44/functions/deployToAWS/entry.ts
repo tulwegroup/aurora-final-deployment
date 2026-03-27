@@ -215,7 +215,7 @@ Resources:
     Type: AWS::RDS::DBInstance
     Properties:
       DBInstanceIdentifier: aurora-db-instance-1
-      DBInstanceClass: db.t3.small
+      DBInstanceClass: db.t3.medium
       Engine: aurora-postgresql
       DBClusterIdentifier: !Ref AuroraDBCluster
       PubliclyAccessible: false
