@@ -8,7 +8,18 @@
  * No threshold defaults, no ACIF arithmetic, no tier recounting.
  */
 
-const BASE = import.meta.env.VITE_AURORA_API_URL || "http://localhost:8000/api/v1";
+// Determine API base URL: use env var, production domain, or default to localhost
+const BASE = (() => {
+  const envUrl = import.meta.env.VITE_AURORA_API_URL;
+  if (envUrl) return envUrl;
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    if (host === 'aurora-osi.io' || host === 'api.aurora-osi.io') {
+      return 'https://api.aurora-osi.io/api/v1';
+    }
+  }
+  return 'http://localhost:8000/api/v1';
+})();
 
 let _accessToken = null;
 
