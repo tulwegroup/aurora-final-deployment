@@ -336,7 +336,7 @@ Resources:
             Interval: 30
             Timeout: 10
             Retries: 5
-            StartPeriod: 120
+            StartPeriod: 300
 
   ALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
@@ -388,7 +388,9 @@ Resources:
 
   ECSService:
     Type: AWS::ECS::Service
-    DependsOn: HTTPSListener
+    DependsOn:
+      - HTTPSListener
+      - AuroraDBCluster
     Properties:
       ServiceName: aurora-osi-production
       Cluster: !Ref ECSCluster
