@@ -356,12 +356,18 @@ Resources:
             - ContainerPort: 8000
               Protocol: tcp
           Environment:
-            - Name: AURORA_ENV
-              Value: !Ref Environment
-            - Name: DATABASE_URL
-              Value: !Sub 'postgresql://aurora_admin:${DBPassword}@${AuroraDBCluster.Endpoint.Address}:5432/aurora_db'
-            - Name: LOG_LEVEL
-              Value: !If [IsProduction, 'warn', 'info']
+           - Name: AURORA_ENV
+             Value: !Ref Environment
+           - Name: DATABASE_URL
+             Value: !Sub 'postgresql://aurora_admin:PLACEHOLDER@${AuroraDBCluster.Endpoint.Address}:5432/aurora_db'
+           - Name: AURORA_DB_HOST
+             Value: !GetAtt AuroraDBCluster.Endpoint.Address
+           - Name: AURORA_DB_USER
+             Value: aurora_admin
+           - Name: AURORA_DB_NAME
+             Value: aurora_db
+           - Name: LOG_LEVEL
+             Value: !If [IsProduction, 'warn', 'info']
           Secrets:
             - Name: GEE_SERVICE_ACCOUNT_KEY_JSON
               ValueFrom: !Sub '${GEESecretKey.Arn}:json-key::'
@@ -374,7 +380,7 @@ Resources:
           HealthCheck:
             Command:
               - CMD-SHELL
-              - curl -f http://localhost:8000/health || exit 1
+              - curl -f http://localhost:8000/health/live || exit 1
             Interval: 30
             Timeout: 5
             Retries: 3
@@ -401,7 +407,7 @@ Resources:
       Protocol: HTTP
       VpcId: !Ref AuroraVPC
       TargetType: ip
-      HealthCheckPath: /health
+      HealthCheckPath: /health/live
       HealthCheckProtocol: HTTP
       HealthCheckIntervalSeconds: 30
       HealthCheckTimeoutSeconds: 5

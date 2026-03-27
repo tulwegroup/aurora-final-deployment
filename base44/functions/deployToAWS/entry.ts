@@ -531,6 +531,23 @@ Deno.serve(async (req) => {
       'Capabilities.member.2': 'CAPABILITY_AUTO_EXPAND',
     };
 
+    // Check if stack exists or is deleting
+    let stackStatus = null;
+    const describeParams = { StackName: stackName };
+    const describeRes = await cfRequest({ action: 'DescribeStacks', params: describeParams, ...creds });
+    if (describeRes.ok) {
+      const statusMatch = describeRes.xml.match(/<StackStatus>([^<]+)<\/StackStatus>/);
+      stackStatus = statusMatch ? statusMatch[1] : null;
+    }
+
+    // If DELETE_IN_PROGRESS, use unique name to avoid conflict
+    let finalStackName = stackName;
+    if (stackStatus && stackStatus.includes('DELETE_IN_PROGRESS')) {
+      const timestamp = Date.now().toString().slice(-6);
+      finalStackName = `${stackName}-${timestamp}`;
+      cfParams.StackName = finalStackName;
+    }
+
     // Try CreateStack first; if exists try UpdateStack
     let cfRes = await cfRequest({ action: 'CreateStack', params: cfParams, ...creds });
     let cfAction = 'CREATE_IN_PROGRESS';
@@ -550,7 +567,7 @@ Deno.serve(async (req) => {
       status: 'success',
       message: 'Stack operation initiated!',
       stackId: stackIdMatch ? stackIdMatch[1] : null,
-      stackName,
+      stackName: finalStackName,
       region: aws_region,
       action: cfAction,
       estimatedTime: '15-25 minutes',
