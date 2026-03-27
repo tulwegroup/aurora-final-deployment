@@ -78,17 +78,24 @@ def create_application() -> FastAPI:
     # Built-in endpoints (always available — no phase gate)
     # -------------------------------------------------------------------------
 
+    @app.get("/", tags=["System"], summary="Root redirect")
+    async def root() -> JSONResponse:
+        """Redirect root to health endpoint."""
+        return JSONResponse(
+            status_code=200,
+            content={"status": "alive", "redirect": "/health/live"},
+        )
+
     @app.get("/health", tags=["System"], summary="Health check")
+    @app.get("/health/live", tags=["System"], summary="Health check")
     async def health() -> JSONResponse:
-        """
-        Returns application health status.
+        """Returns application health status.
         Always available regardless of feature flags.
-        No authentication required.
-        """
+        No authentication required."""
         return JSONResponse(
             status_code=200,
             content={
-                "status": "ok",
+                "status": "alive",
                 "app": APP_NAME,
                 "env": settings.aurora_env.value,
                 "flags": {
