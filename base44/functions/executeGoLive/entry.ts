@@ -53,12 +53,12 @@ Deno.serve(async (req) => {
     };
 
     // 4. Validate API Health
-    const apiHealthy = await checkAPIHealth('https://api.aurora-osi.io/health/live');
+    const apiHealthy = await checkAPIHealth('https://api.aurora-osi.com/health/live');
     results.checks.api = {
       name: 'Aurora API',
       status: apiHealthy ? 'HEALTHY' : 'UNREACHABLE',
       complete: apiHealthy,
-      endpoint: 'https://api.aurora-osi.io',
+      endpoint: 'https://api.aurora-osi.com',
       detail: apiHealthy ? 'API responding to health checks' : 'Waiting for DNS or DNS cache refresh'
     };
 
@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
       name: 'DNS Configuration',
       status: apiHealthy ? 'ACTIVE' : 'PENDING',
       complete: apiHealthy,
-      domain: 'api.aurora-osi.io',
+      domain: 'api.aurora-osi.com',
       detail: apiHealthy ? 'DNS resolving and live' : 'Point CNAME to ALB endpoint'
     };
 
