@@ -126,6 +126,7 @@ Deno.serve(async (req) => {
         type: 'GITHUB',
         location: 'https://github.com/aurora-osi/aurora-osi-production.git',
         gitCloneDepth: 1,
+        buildspec: JSON.stringify(BUILDSPEC),
       },
       artifacts: { type: 'NO_ARTIFACTS' },
       environment: {
