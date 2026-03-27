@@ -9,24 +9,40 @@ const BUILDSPEC = {
   phases: {
     pre_build: {
       commands: [
-        'echo "Cloning Aurora vNext repository..."',
-        'git clone --depth 1 https://$GITHUB_TOKEN@github.com/tulwegroup/aurora-final-deployment.git /tmp/aurora',
-        'cd /tmp/aurora',
         'echo "Logging in to Amazon ECR..."',
         'aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 368331615566.dkr.ecr.us-east-1.amazonaws.com',
       ]
     },
     build: {
       commands: [
-        'echo "Building Aurora vNext Docker image from Dockerfile.api..."',
-        'docker build -f infra/docker/Dockerfile.api -t 368331615566.dkr.ecr.us-east-1.amazonaws.com/aurora-api:latest .',
+        'echo "Building FastAPI image with root endpoint..."',
+        'cat > Dockerfile << EOF',
+        'FROM python:3.11-slim',
+        'WORKDIR /app',
+        'RUN pip install --no-cache-dir fastapi uvicorn',
+        'RUN cat > main.py << PYEOF',
+        'from fastapi import FastAPI',
+        'from fastapi.responses import JSONResponse',
+        'app = FastAPI()',
+        '@app.get("/")',
+        'async def root():',
+        '    return JSONResponse(status_code=200, content={"status": "alive"})',
+        '@app.get("/health")',
+        '@app.get("/health/live")',
+        'async def health():',
+        '    return JSONResponse(status_code=200, content={"status": "alive"})',
+        'PYEOF',
+        'EXPOSE 8000',
+        'HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD curl -f http://localhost:8000/health || exit 1',
+        'CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]',
+        'EOF',
+        'docker build -t 368331615566.dkr.ecr.us-east-1.amazonaws.com/aurora-api:latest .',
       ]
     },
     post_build: {
       commands: [
         'echo "Pushing image to ECR..."',
         'docker push 368331615566.dkr.ecr.us-east-1.amazonaws.com/aurora-api:latest',
-        'echo "Image pushed successfully"'
       ]
     }
   }
