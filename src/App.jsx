@@ -33,6 +33,7 @@ import LiveScanConsole from './pages/LiveScanConsole';
 import LiveScanViewer from './pages/LiveScanViewer';
 import DynamicReportPage from './pages/DynamicReportPage';
 import APIHealthDiagnostics from './pages/APIHealthDiagnostics';
+import EndpointTestDashboard from './pages/EndpointTestDashboard';
 // Add page imports here
 
 const AuthenticatedApp = () => {
@@ -94,6 +95,7 @@ const AuthenticatedApp = () => {
         <Route path="/report/:scanId" element={<DynamicReportPage />} />
         <Route path="/report" element={<DynamicReportPage />} />
         <Route path="/health" element={<APIHealthDiagnostics />} />
+        <Route path="/endpoint-tests" element={<EndpointTestDashboard />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>

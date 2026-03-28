@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AlertCircle, CheckCircle, Loader2, RefreshCw, Activity, Network, Database } from 'lucide-react';
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = 'https://api.aurora-osi.com';
 
 export default function APIHealthDiagnostics() {
   const [liveness, setLiveness] = useState(null);
@@ -23,23 +23,23 @@ export default function APIHealthDiagnostics() {
     setLoading(true);
     try {
       // 1. Liveness
-      const liveRes = await fetch(`${API_BASE}/api/v1/health/live`);
+      const liveRes = await fetch(`${API_BASE}/health`);
       setLiveness(liveRes.ok ? await liveRes.json() : { error: 'Failed to reach liveness' });
 
       // 2. Readiness
-      const readyRes = await fetch(`${API_BASE}/api/v1/health/ready`);
+      const readyRes = await fetch(`${API_BASE}/health`);
       setReadiness(readyRes.ok ? await readyRes.json() : { error: 'Failed to reach readiness' });
 
       // 3. Dependencies
-      const depsRes = await fetch(`${API_BASE}/api/v1/health/dependencies`);
+      const depsRes = await fetch(`${API_BASE}/health`);
       setDependencies(depsRes.ok ? await depsRes.json() : { error: 'Failed to reach dependencies' });
 
       // 4. Routes
-      const routesRes = await fetch(`${API_BASE}/api/v1/discover/routes`);
+      const routesRes = await fetch(`${API_BASE}/api/v1/admin/routes`);
       setRoutes(routesRes.ok ? await routesRes.json() : { error: 'Failed to fetch routes' });
 
       // 5. Network diagnostics
-      const netRes = await fetch(`${API_BASE}/api/v1/discover/network-diagnostics`);
+      const netRes = await fetch(`${API_BASE}/api/v1/admin/diagnostics`);
       setNetworkDiags(netRes.ok ? await netRes.json() : { error: 'Failed to fetch network diagnostics' });
 
       // 6. Test key endpoints
@@ -345,7 +345,7 @@ export default function APIHealthDiagnostics() {
             <p className="font-medium">Database Connection Failed?</p>
             <ul className="list-disc list-inside text-xs text-muted-foreground mt-1 space-y-0.5">
               <li>Verify PostgreSQL is running and port 5432 is open</li>
-              <li>Check connection string matches environment: <span className="font-mono">{API_BASE}</span></li>
+              <li>Check connection string matches environment: <span className="font-mono">https://api.aurora-osi.com</span></li>
               <li>Ensure network policies allow inter-container communication</li>
             </ul>
           </div>
