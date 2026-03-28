@@ -1,9 +1,10 @@
 /**
- * diagnoseAuroraRoutes — Test and inventory actual mounted Aurora API routes
+ * diagnoseAuroraRoutes — Test mounted Aurora API routes against production canonical domain
+ * Diagnostic only: tests https://api.aurora-osi.io for route mounting and ALB target health
  * Safe to call from frontend; returns route availability + response codes
  */
 
-const AURORA_URL = 'https://aurora-alb-1663263128.us-east-1.elb.amazonaws.com';
+const AURORA_CANONICAL = 'https://api.aurora-osi.io';
 
 const ROUTES_TO_TEST = [
   { method: 'GET', path: '/health' },
@@ -22,7 +23,7 @@ Deno.serve(async (req) => {
 
     for (const route of ROUTES_TO_TEST) {
       try {
-        const url = `${AURORA_URL}${route.path}`;
+        const url = `${AURORA_CANONICAL}${route.path}`;
         const res = await fetch(url, {
           method: route.method,
           headers: {
@@ -58,7 +59,7 @@ Deno.serve(async (req) => {
     }
 
     return Response.json({
-      aurora_base: AURORA_URL,
+      aurora_canonical: AURORA_CANONICAL,
       tested_at: new Date().toISOString(),
       routes: results,
       summary: {

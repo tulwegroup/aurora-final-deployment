@@ -8,10 +8,11 @@
  * No threshold defaults, no ACIF arithmetic, no tier recounting.
  */
 
-// Direct call to Aurora ALB — no proxy layer
-const BASE = 'https://aurora-alb-1663263128.us-east-1.elb.amazonaws.com/api/v1';
+// Canonical production Aurora API endpoint
+// Routes through CloudFront / ALB with proper CORS & routing
+const BASE = 'https://api.aurora-osi.io/api/v1';
 
-export const API_ROOT = 'https://aurora-alb-1663263128.us-east-1.elb.amazonaws.com';
+export const API_ROOT = 'https://api.aurora-osi.io';
 
 let _accessToken = null;
 
