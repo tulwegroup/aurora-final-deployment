@@ -46,10 +46,17 @@ def create_application() -> FastAPI:
         redoc_url="/redoc" if not settings.is_production else None,
     )
 
-    # CORS — tightened in production via environment
+    # CORS — allow base44 preview/production origins in all environments
+    ALLOWED_ORIGINS = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+        # base44 app origins
+        "https://preview-sandbox--69c4c3161cd352e36ff3ede7.base44.app",
+        "https://69c4c3161cd352e36ff3ede7.base44.app",
+    ]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"] if not settings.is_production else [],
+        allow_origins=ALLOWED_ORIGINS if settings.is_production else ["*"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
