@@ -15,9 +15,16 @@ const BUILDSPEC = {
     },
     build: {
       commands: [
-        'echo "Pulling and tagging minimal FastAPI image..."',
-        'docker pull python:3.11-slim',
-        'docker tag python:3.11-slim 368331615566.dkr.ecr.us-east-1.amazonaws.com/aurora-api:latest',
+        'echo "Building minimal FastAPI health-check image..."',
+        'mkdir -p /tmp/app',
+        // Write requirements.txt
+        `echo 'fastapi\nuvicorn[standard]' > /tmp/app/requirements.txt`,
+        // Write main.py with health endpoint
+        `cat > /tmp/app/main.py << 'PYEOF'\nfrom fastapi import FastAPI\nfrom fastapi.responses import JSONResponse\napp = FastAPI()\n@app.get("/")\nasync def root():\n    return JSONResponse({"status": "alive", "service": "aurora-api"})\n@app.get("/health/live")\nasync def health():\n    return JSONResponse({"status": "alive"})\n@app.get("/health")\nasync def health2():\n    return JSONResponse({"status": "alive"})\nPYEOF`,
+        // Write Dockerfile
+        `cat > /tmp/app/Dockerfile << 'DEOF'\nFROM python:3.11-slim\nWORKDIR /app\nCOPY requirements.txt .\nRUN pip install --no-cache-dir -r requirements.txt\nCOPY main.py .\nEXPOSE 8000\nHEALTHCHECK --interval=30s --timeout=10s --retries=5 CMD curl -f http://localhost:8000/health/live || exit 1\nCMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]\nDEOF`,
+        'cd /tmp/app && docker build -t aurora-api:latest .',
+        'docker tag aurora-api:latest 368331615566.dkr.ecr.us-east-1.amazonaws.com/aurora-api:latest',
       ]
     },
     post_build: {
