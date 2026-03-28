@@ -39,7 +39,7 @@ export default function Layout() {
   useEffect(() => {
     auth.me()
       .then(setUser)
-      .catch(() => navigate("/login"))
+      .catch(() => setUser(null))
       .finally(() => setLoading(false));
   }, []);
 
