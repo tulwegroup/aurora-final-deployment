@@ -102,7 +102,16 @@ export default function GroundTruthAdmin() {
     </div>
   );
 
-  if (error) return <div className="p-6 text-destructive text-sm">{error}</div>;
+  if (error) return (
+    <div className="p-6">
+      <APIOffline
+        error={error}
+        endpoint="GET /api/v1/gt/records"
+        onRetry={fetchAll}
+        hint="The Aurora API ground-truth router is unreachable. Ensure the API container is running and the /gt/* routes are mounted in main.py."
+      />
+    </div>
+  );
 
   return (
     <div className="p-6 max-w-7xl space-y-6">
