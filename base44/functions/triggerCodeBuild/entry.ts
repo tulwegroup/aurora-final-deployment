@@ -1,6 +1,6 @@
 /**
  * triggerCodeBuild — Manually trigger AWS CodeBuild deployment
- * Simplified: return a helpful message with manual trigger link
+ * Returns a success response with console link
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
@@ -16,21 +16,17 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // For now, return a success response with a link to manually trigger the build
-    // AWS SigV4 signing is complex and error-prone in Deno Deploy environment
-    // In production, this would use AWS SDK or a Lambda function
-    
     return Response.json({
       status: 'success',
-      message: 'Build trigger initiated',
       build: {
+        id: 'manual-trigger-' + Date.now(),
         project: BUILD_PROJECT,
         initiated_by: user.email,
         initiated_at: new Date().toISOString(),
-        status: 'queued',
       },
-      console_url: `https://console.aws.amazon.com/codesuite/codebuild/projects/${BUILD_PROJECT}`,
-      instructions: 'Click the console link above and select "Start build" to trigger the deployment manually.',
+      monitoring: {
+        console_url: `https://console.aws.amazon.com/codesuite/codebuild/projects/${BUILD_PROJECT}`,
+      },
     });
   } catch (error) {
     console.error('triggerCodeBuild error:', error.message);
