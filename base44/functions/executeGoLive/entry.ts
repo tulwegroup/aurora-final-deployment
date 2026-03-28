@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
       status: apiHealthy ? 'HEALTHY' : 'UNREACHABLE',
       complete: apiHealthy,
       endpoint: 'https://api.aurora-osi.com',
-      detail: apiHealthy ? 'API responding to health checks' : 'Waiting for DNS or DNS cache refresh'
+      detail: apiHealthy ? 'API responding to health checks at /health/live' : 'API not reachable'
     };
 
     // 5. Validate Data Room S3
@@ -146,7 +146,10 @@ Deno.serve(async (req) => {
 
 async function checkAPIHealth(url) {
   try {
-    const res = await fetch(url, { method: 'HEAD', timeout: 5000 });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(url, { method: 'GET', signal: controller.signal });
+    clearTimeout(timer);
     return res.ok;
   } catch {
     return false;
