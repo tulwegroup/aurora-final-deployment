@@ -117,8 +117,10 @@ const MATRIX = [
   {
     id: "WF-09", phase: "AH", feature: "Step 4 — Data Room export package creation",
     persona: "Operator, Admin", route: "/workflow", component: "ExportStep",
-    endpoint: "POST /api/v1/data-room/packages", fields: "package_id, access_url, package_hash",
-    status: "BLOCKED", gap: "Backend function dataRoomCreate not yet deployed to Aurora API.", action: "Deploy dataRoomCreate backend function",
+    endpoint: "buildDataRoom, revokeDeliveryLink backend functions", fields: "package_id, access_url, package_hash",
+    status: "BLOCKED",
+    gap: "ExportStep now renders explicit red banner explaining backend dependency. Demo mode (Ghana Gold) works fully. Live mode shows unavailable state. No dead-end button.",
+    action: "Deploy buildDataRoom and revokeDeliveryLink backend functions",
   },
   {
     id: "WF-10", phase: "AI", feature: "Demo mode — Ghana Gold end-to-end (no backend)",
@@ -276,31 +278,35 @@ const MATRIX = [
     id: "GT-01", phase: "Z §Z.4", feature: "Ground truth record list (pending / approved / rejected tabs)",
     persona: "Admin, Operator", route: "/ground-truth", component: "GroundTruthAdmin",
     endpoint: "GET /api/v1/ground-truth/records", fields: "record_id, status, commodity, source_type",
-    status: "BLOCKED", gap: "Aurora API Phase Z ground-truth routers not yet mounted in main.py.", action: "Mount ground_truth_admin.py router in Aurora main.py",
+    status: "BLOCKED",
+    gap: "Aurora API Phase Z ground-truth routers not mounted in main.py. UI renders APIOffline banner + empty tabs. No silent failure.",
+    action: "Mount ground_truth_admin.py router in Aurora main.py and redeploy API",
   },
   {
     id: "GT-02", phase: "Z §Z.4", feature: "Approve / reject with mandatory reason",
     persona: "Admin", route: "/ground-truth", component: "GroundTruthAdmin",
     endpoint: "POST /api/v1/ground-truth/approve, /reject", fields: "record_id, reason",
-    status: "BLOCKED", gap: "Same as GT-01.", action: "Same as GT-01",
+    status: "BLOCKED",
+    gap: "Action buttons replaced with explicit 'Actions Unavailable' card explaining required backend action. No dead-end alert().",
+    action: "Same as GT-01",
   },
   {
     id: "GT-03", phase: "Z §Z.4", feature: "Calibration version lineage view",
     persona: "Admin", route: "/ground-truth", component: "GroundTruthAdmin",
     endpoint: "GET /api/v1/ground-truth/versions", fields: "version_id, parent_version_id, calibration_effect_flags",
-    status: "BLOCKED", gap: "Same as GT-01.", action: "Same as GT-01",
+    status: "BLOCKED", gap: "Tab renders empty state. APIOffline banner shown at page top.", action: "Same as GT-01",
   },
   {
     id: "GT-04", phase: "Z §Z.4", feature: "Provenance detail panel",
     persona: "Admin, Operator", route: "/ground-truth", component: "ProvenancePanel",
     endpoint: "GET /api/v1/ground-truth/records/{id}", fields: "source_doc_ref, confidence, methodology",
-    status: "BLOCKED", gap: "Same as GT-01.", action: "Same as GT-01",
+    status: "BLOCKED", gap: "Panel shows 'Select a record' placeholder until records load.", action: "Same as GT-01",
   },
   {
     id: "GT-05", phase: "Z §Z.4", feature: "Ground truth audit log",
     persona: "Admin", route: "/ground-truth", component: "GroundTruthAdmin",
     endpoint: "GET /api/v1/ground-truth/audit", fields: "actor_id, action, occurred_at, from_status, to_status, reason",
-    status: "BLOCKED", gap: "Same as GT-01.", action: "Same as GT-01",
+    status: "BLOCKED", gap: "Audit tab renders empty table with 'No audit entries yet' message. No silent failure.", action: "Same as GT-01",
   },
 
   // ─── Portfolio ───────────────────────────────────────────────────
@@ -328,31 +334,37 @@ const MATRIX = [
     id: "DR-01", phase: "AH §AH.6", feature: "Package list (active / expired / revoked) with hashes",
     persona: "All", route: "/data-room", component: "DataRoom",
     endpoint: "dataRoomList backend function", fields: "packages[], package_hash, status, expires_at",
-    status: "BLOCKED", gap: "dataRoomList backend function not yet deployed.", action: "Deploy dataRoomList",
+    status: "BLOCKED",
+    gap: "UI shows explicit red 'Backend unavailable' banner at top + APIOffline component on list load failure. No silent failure.",
+    action: "Deploy dataRoomList backend function wired to Aurora /api/v1/data-room/packages GET",
   },
   {
     id: "DR-02", phase: "AH §AH.6", feature: "Package creation (scan_id, audience, TTL, single-use, watermark)",
     persona: "Operator, Admin", route: "/data-room", component: "DataRoom → CreatePackageForm",
     endpoint: "dataRoomCreate backend function", fields: "scan_id, audience, ttl_seconds, single_use, watermarked",
-    status: "BLOCKED", gap: "dataRoomCreate backend function not yet deployed.", action: "Deploy dataRoomCreate",
+    status: "BLOCKED",
+    gap: "Create form renders but submission fails with APIOffline component. Red banner explains dependency. No silent failure.",
+    action: "Deploy dataRoomCreate backend function",
   },
   {
     id: "DR-03", phase: "AH §AH.6", feature: "Copy access link / open package",
     persona: "Operator, Admin", route: "/data-room", component: "DataRoom → PackageRow",
     endpoint: "None (UI action on access_url)", fields: "access_url",
-    status: "BLOCKED", gap: "access_url only available after dataRoomCreate is deployed.", action: "Deploy dataRoomCreate",
+    status: "BLOCKED", gap: "Copy/Open buttons only render when access_url is present in API response — which requires DR-02.", action: "Deploy dataRoomCreate",
   },
   {
     id: "DR-04", phase: "AH §AH.6", feature: "Revoke package",
     persona: "Operator, Admin", route: "/data-room", component: "DataRoom",
     endpoint: "dataRoomRevoke backend function", fields: "package_id",
-    status: "BLOCKED", gap: "dataRoomRevoke backend function not yet deployed.", action: "Deploy dataRoomRevoke",
+    status: "BLOCKED",
+    gap: "Revoke button conditionally rendered only for active packages. Failure caught with alert(). Red banner explains dependency.",
+    action: "Deploy dataRoomRevoke backend function",
   },
   {
     id: "DR-05", phase: "AH §AH.6", feature: "Single-use + watermark flag display",
     persona: "All", route: "/data-room", component: "PackageRow",
     endpoint: "dataRoomList", fields: "single_use, watermarked",
-    status: "BLOCKED", gap: "Depends on DR-01.", action: "Deploy dataRoomList",
+    status: "BLOCKED", gap: "Badges only render when package data is returned by API. Depends on DR-01.", action: "Deploy dataRoomList",
   },
 
   // ─── Admin ───────────────────────────────────────────────────────
@@ -442,6 +454,11 @@ export default function UICoverage() {
           Master compliance audit against all approved Aurora OSI phases.
           {" "}{IMPLEMENTED_ITEMS.length} implemented · {PARTIAL_ITEMS.length} partial · {BLOCKED_ITEMS.length} backend-blocked.
         </p>
+        <div className="inline-flex items-center gap-2 mt-2 px-3 py-1.5 rounded border border-amber-300 bg-amber-50 text-amber-900 text-xs font-medium">
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+          UI STATUS: <strong>COMPLETE EXCEPT BACKEND-BLOCKED ITEMS</strong>
+          {" — "}{BLOCKED_ITEMS.length} features have production-safe unavailable states but require backend deployment to activate.
+        </div>
       </div>
 
       {/* Summary */}
@@ -466,7 +483,9 @@ export default function UICoverage() {
           <TabsTrigger value="matrix">Full Matrix ({MATRIX.length})</TabsTrigger>
           <TabsTrigger value="blocked">Blocked ({BLOCKED_ITEMS.length})</TabsTrigger>
           <TabsTrigger value="routes">Routes</TabsTrigger>
-          <TabsTrigger value="constitutional">Constitutional Proof</TabsTrigger>
+          <TabsTrigger value="blocked">Blocked ({BLOCKED_ITEMS.length})</TabsTrigger>
+        <TabsTrigger value="routes">Routes</TabsTrigger>
+        <TabsTrigger value="constitutional">Constitutional Proof</TabsTrigger>
         </TabsList>
 
         {/* Full matrix */}

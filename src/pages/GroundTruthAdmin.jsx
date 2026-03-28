@@ -66,18 +66,13 @@ export default function GroundTruthAdmin() {
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
   async function handleApprove(record_id) {
-    setActionLoading(true);
-    alert("Approve action — Aurora API Phase Z router not yet mounted.");
-    setActionLoading(false);
+    // Blocked: Aurora API Phase Z ground-truth router not yet mounted
+    // Action will be wired once POST /api/v1/ground-truth/approve is available
   }
 
   async function handleReject(record_id) {
-    if (!rejectReason.trim()) return;
-    setActionLoading(true);
-    alert("Reject action — Aurora API Phase Z router not yet mounted.");
-    setShowRejectModal(false);
-    setRejectReason("");
-    setActionLoading(false);
+    // Blocked: Aurora API Phase Z ground-truth router not yet mounted
+    // Action will be wired once POST /api/v1/ground-truth/reject is available
   }
 
   const pending   = records.filter(r => r.status === "pending");
@@ -244,23 +239,11 @@ export default function GroundTruthAdmin() {
             <>
               <ProvenancePanel record={selected} />
               {selected.status === "pending" && actorRole === "admin" && (
-                <Card>
-                  <CardHeader className="pb-2"><CardTitle className="text-sm">Actions</CardTitle></CardHeader>
-                  <CardContent className="space-y-2">
-                    <Button
-                      className="w-full"
-                      disabled={actionLoading}
-                      onClick={() => handleApprove(selected.record_id)}
-                    >
-                      {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-1" />}
-                      Approve
-                    </Button>
-                    <Button
-                      variant="destructive" className="w-full"
-                      onClick={() => setShowRejectModal(true)}
-                    >
-                      <XCircle className="w-4 h-4 mr-1" /> Reject
-                    </Button>
+                <Card className="border-red-200 bg-red-50">
+                  <CardHeader className="pb-2"><CardTitle className="text-sm text-red-800">Actions Unavailable</CardTitle></CardHeader>
+                  <CardContent className="text-xs text-red-700 space-y-1">
+                    <p>Approve / Reject actions are blocked.</p>
+                    <p className="font-medium">Required: Mount Aurora API Phase Z ground-truth router in <code className="font-mono bg-red-100 px-1 rounded">main.py</code> and redeploy.</p>
                   </CardContent>
                 </Card>
               )}

@@ -327,6 +327,19 @@ export default function DataRoom() {
         </Button>
       </div>
 
+      {/* Backend unavailable banner */}
+      <div className="flex items-start gap-2 text-xs bg-red-50 text-red-800 border border-red-200 rounded-lg px-4 py-3">
+        <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-red-600" />
+        <div>
+          <span className="font-semibold">Backend unavailable — read-only mode.</span>
+          {" "}Three backend functions must be deployed before this page is operational:
+          {" "}<code className="font-mono bg-red-100 px-1 rounded">dataRoomList</code>,
+          {" "}<code className="font-mono bg-red-100 px-1 rounded">dataRoomCreate</code>, and
+          {" "}<code className="font-mono bg-red-100 px-1 rounded">dataRoomRevoke</code>.
+          {" "}All interactions below will fail gracefully until these are deployed.
+        </div>
+      </div>
+
       {/* Security notice */}
       <div className="flex items-start gap-2 text-xs bg-blue-50 text-blue-800 border border-blue-200 rounded-lg px-4 py-2.5">
         <Shield className="w-3.5 h-3.5 mt-0.5 shrink-0" />
