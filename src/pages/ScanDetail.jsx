@@ -18,7 +18,7 @@ import MissingValue, { ValueOrMissing } from "../components/MissingValue";
 import ScoreGrid from "../components/ScoreGrid";
 import TierDistribution from "../components/TierDistribution";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, ArrowLeft, GitBranch } from "lucide-react";
+import { Loader2, ArrowLeft, GitBranch, FileText, Map, Box, Lock, Download } from "lucide-react";
 import APIOffline from "../components/APIOffline";
 
 function Field({ label, children }) {
@@ -45,13 +45,15 @@ export default function ScanDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError]   = useState(null);
 
-  useEffect(() => {
+  function load() {
     setLoading(true);
     history.get(scanId)
       .then(setScan)
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
-  }, [scanId]);
+  }
+
+  useEffect(() => { load(); }, [scanId]);
 
   if (loading) return <div className="p-6 flex items-center gap-2 text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>;
   if (error)   return <div className="p-6"><APIOffline error={error} endpoint={`GET /api/v1/history/${scanId}`} /></div>;
@@ -173,14 +175,36 @@ export default function ScanDetail() {
         </Card>
       )}
 
-      <div className="flex gap-2">
-        <Link to={`/datasets/${scanId}`} className="text-sm underline text-muted-foreground hover:text-foreground">
-          View Dataset →
-        </Link>
-        <span className="text-muted-foreground">·</span>
-        <Link to={`/twin/${scanId}`} className="text-sm underline text-muted-foreground hover:text-foreground">
-          View Digital Twin →
-        </Link>
+      {/* Action bar — links to related pages */}
+      <div className="border rounded-lg px-4 py-3 bg-muted/20">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Actions</div>
+        <div className="flex flex-wrap gap-2">
+          <Link to={`/datasets/${scanId}`}>
+            <button className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border hover:bg-muted transition-colors">
+              <Download className="w-3.5 h-3.5" /> Dataset
+            </button>
+          </Link>
+          <Link to={`/twin/${scanId}`}>
+            <button className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border hover:bg-muted transition-colors">
+              <Box className="w-3.5 h-3.5" /> Digital Twin
+            </button>
+          </Link>
+          <Link to={`/reports/${scanId}`}>
+            <button className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border hover:bg-muted transition-colors">
+              <FileText className="w-3.5 h-3.5" /> Generate Report
+            </button>
+          </Link>
+          <Link to={`/map-export/${scanId}`}>
+            <button className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border hover:bg-muted transition-colors">
+              <Map className="w-3.5 h-3.5" /> Map Export
+            </button>
+          </Link>
+          <Link to={`/data-room`}>
+            <button className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border hover:bg-muted transition-colors">
+              <Lock className="w-3.5 h-3.5" /> Data Room
+            </button>
+          </Link>
+        </div>
       </div>
     </div>
   );

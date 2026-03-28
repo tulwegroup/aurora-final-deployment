@@ -14,6 +14,7 @@
  * records and calibration versions only.
  */
 import { useState, useEffect, useCallback } from "react";
+import { useOutletContext } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -42,11 +43,9 @@ export default function GroundTruthAdmin() {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [error, setError]               = useState(null);
 
-  // Simulated role — in production sourced from auth context
-  const actorRole = "admin";
-  const actorId   = "admin_user";
-
-  const headers = { "x-actor-role": actorRole, "x-actor-id": actorId };
+  const { user } = useOutletContext() || {};
+  const actorRole = user?.role || "operator";
+  const actorId   = user?.email || "unknown";
 
   const fetchAll = useCallback(async () => {
     setLoading(true);

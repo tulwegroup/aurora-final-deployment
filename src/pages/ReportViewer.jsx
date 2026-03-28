@@ -109,6 +109,10 @@ export default function ReportViewer() {
     }
   }, [effectiveScanId, audience, commodity]);
 
+  function handlePrint() {
+    window.print();
+  }
+
   return (
     <div className="p-6 max-w-5xl space-y-5">
       {/* Header */}
@@ -163,6 +167,11 @@ export default function ReportViewer() {
             {loading ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <FileText className="w-4 h-4 mr-1" />}
             Generate Report
           </Button>
+          {report && (
+            <Button variant="outline" onClick={handlePrint}>
+              <Download className="w-4 h-4 mr-1" /> Print / Export
+            </Button>
+          )}
         </CardContent>
       </Card>
 

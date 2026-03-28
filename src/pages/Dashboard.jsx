@@ -1,25 +1,36 @@
 /**
- * Dashboard — active scans overview
- * Phase P §P.2
+ * Dashboard — Active scans overview + quick-action landing page
+ * Phase P §P.2 (Refined)
  *
  * CONSTITUTIONAL RULES:
  *  - Renders active scan list from GET /scan/active (execution state only).
  *  - No score fields appear on this page (active scans have none).
  *  - No ACIF arithmetic, no tier threshold references.
- *  - Missing fields render MissingValue.
  */
 import { useEffect, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 import { scans } from "../lib/auroraApi";
 import { ScanStatusBadge } from "../components/ScanStatusBadge";
 import MissingValue from "../components/MissingValue";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw, ArrowRight } from "lucide-react";
+import {
+  Loader2, RefreshCw, ArrowRight,
+  Workflow, History, BarChart3, FileText, Lock, Map
+} from "lucide-react";
 import APIOffline from "../components/APIOffline";
 
+const QUICK_ACTIONS = [
+  { to: "/workflow",   icon: Workflow,  label: "New Scan",     desc: "Submit a new AOI scan workflow" },
+  { to: "/history",    icon: History,   label: "Scan History", desc: "View completed canonical records" },
+  { to: "/portfolio",  icon: BarChart3, label: "Portfolio",    desc: "Territory-level intelligence" },
+  { to: "/reports",    icon: FileText,  label: "Reports",      desc: "Generate geological reports" },
+  { to: "/data-room",  icon: Lock,      label: "Data Room",    desc: "Secure access packages" },
+  { to: "/map-builder",icon: Map,       label: "Map Builder",  desc: "Draw AOI and initiate scan" },
+];
+
 export default function Dashboard() {
-  const { user }          = useOutletContext() || {};
+  const { user }            = useOutletContext() || {};
   const [active, setActive] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
@@ -39,12 +50,16 @@ export default function Dashboard() {
 
   useEffect(() => { load(); }, []);
 
+  const greeting = user?.full_name
+    ? `Welcome, ${user.full_name.split(" ")[0]}`
+    : "Aurora OSI Dashboard";
+
   return (
-    <div className="p-6 space-y-6 max-w-4xl">
+    <div className="p-6 space-y-7 max-w-5xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Dashboard</h1>
-          <p className="text-muted-foreground text-sm mt-1">Active scan queue</p>
+          <h1 className="text-2xl font-bold">{greeting}</h1>
+          <p className="text-muted-foreground text-sm mt-1">Aurora Orbital Scan Intelligence — vNext</p>
         </div>
         <Button variant="outline" size="sm" onClick={load} disabled={loading}>
           <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
@@ -52,58 +67,88 @@ export default function Dashboard() {
         </Button>
       </div>
 
-      {loading && (
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+      {/* Quick actions */}
+      <div>
+        <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">Quick Access</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {QUICK_ACTIONS.map(({ to, icon: Icon, label, desc }, i) => (
+            <Link key={to} to={to}>
+              <div className={`rounded-xl p-4 h-full transition-all cursor-pointer border hover:border-primary/40 hover:bg-muted/40 ${
+                i === 0 ? "bg-primary text-primary-foreground border-primary hover:border-primary hover:bg-primary/90 hover:text-primary-foreground" : ""
+              }`}>
+                <Icon className="w-5 h-5 mb-2 opacity-80" />
+                <div className="font-semibold text-sm">{label}</div>
+                <div className={`text-xs mt-0.5 ${i === 0 ? "opacity-75" : "text-muted-foreground"}`}>{desc}</div>
+              </div>
+            </Link>
+          ))}
         </div>
-      )}
+      </div>
 
-      {error && <APIOffline error={error} endpoint="GET /api/v1/scan/active" onRetry={load} />}
+      {/* Active scans */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Active Scan Queue</h2>
+          {active && <span className="text-xs text-muted-foreground">{active.total} running</span>}
+        </div>
 
-      {!loading && !error && !active && (
-        <APIOffline endpoint="GET /api/v1/scan/active" onRetry={load} hint="No response from Aurora API. The scan/active router may not be mounted yet." />
-      )}
-
-      {!loading && active && (
-        <>
-          <div className="text-sm text-muted-foreground">
-            {active.total} active scan{active.total !== 1 ? "s" : ""}
+        {loading && (
+          <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
+            <Loader2 className="w-4 h-4 animate-spin" /> Checking scan queue…
           </div>
+        )}
 
-          {active.active_scans.length === 0 ? (
-            <Card>
-              <CardContent className="py-8 text-center text-muted-foreground text-sm">
-                No active scans. <Link to="/history" className="underline">View completed scans →</Link>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="space-y-2">
-              {active.active_scans.map(scan => (
-                <Card key={scan.scan_id}>
-                  <CardContent className="py-3 px-4 flex items-center gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs text-muted-foreground truncate">{scan.scan_id}</span>
-                        <ScanStatusBadge status={scan.status} />
+        {error && <APIOffline error={error} endpoint="GET /api/v1/scan/active" onRetry={load} />}
+
+        {!loading && !error && !active && (
+          <APIOffline endpoint="GET /api/v1/scan/active" onRetry={load} hint="Aurora API not yet responding." />
+        )}
+
+        {!loading && active && (
+          <>
+            {active.active_scans?.length === 0 ? (
+              <Card>
+                <CardContent className="py-8 text-center text-muted-foreground text-sm space-y-2">
+                  <div className="text-3xl">🛰</div>
+                  <p>No active scans in queue.</p>
+                  <p className="text-xs">
+                    <Link to="/workflow" className="underline text-primary">Start a new scan workflow →</Link>
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-2">
+                {active.active_scans.map(scan => (
+                  <Card key={scan.scan_id} className="hover:border-primary/30 transition-colors">
+                    <CardContent className="py-3 px-4 flex items-center gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-xs text-muted-foreground truncate">{scan.scan_id}</span>
+                          <ScanStatusBadge status={scan.status} />
+                        </div>
+                        <div className="text-sm mt-0.5">
+                          <span className="font-medium capitalize">{scan.commodity || <MissingValue inline />}</span>
+                          {scan.scan_tier && <span className="text-muted-foreground ml-2">{scan.scan_tier}</span>}
+                        </div>
                       </div>
-                      <div className="text-sm mt-0.5">
-                        <span className="font-medium">{scan.commodity || <MissingValue inline />}</span>
-                        <span className="text-muted-foreground ml-2">{scan.scan_tier} · {scan.environment}</span>
+                      <div className="text-xs text-muted-foreground">
+                        {scan.submitted_at ? new Date(scan.submitted_at).toLocaleString() : <MissingValue inline />}
                       </div>
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {scan.submitted_at ? new Date(scan.submitted_at).toLocaleString() : <MissingValue inline />}
-                    </div>
-                    <Link to={`/history/${scan.scan_id}`}>
-                      <Button variant="ghost" size="sm"><ArrowRight className="w-4 h-4" /></Button>
-                    </Link>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </>
-      )}
+                      <Link to={`/history/${scan.scan_id}`}>
+                        <Button variant="ghost" size="sm"><ArrowRight className="w-4 h-4" /></Button>
+                      </Link>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      <p className="text-[11px] text-muted-foreground border-t pt-4">
+        Aurora OSI vNext · All displayed values sourced verbatim from canonical API records. No scientific computation in frontend.
+      </p>
     </div>
   );
 }

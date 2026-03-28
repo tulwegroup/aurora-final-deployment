@@ -17,7 +17,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Shield, ChevronLeft, ChevronRight } from "lucide-react";
+import { Loader2, Shield, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { useState as useDialogState } from "react";
 import APIOffline from "../components/APIOffline";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -70,14 +71,23 @@ export default function AdminPanel() {
     setAuditPage(p);
   }
 
-  async function handleRoleChange(userId, newRole) {
-    const reason = prompt("Reason for role change (required):");
-    if (!reason) return;
+  const [roleDialog, setRoleDialog] = useState(null); // { userId, newRole }
+  const [roleReason, setRoleReason] = useState("");
+
+  function promptRoleChange(userId, newRole) {
+    setRoleDialog({ userId, newRole });
+    setRoleReason("");
+  }
+
+  async function confirmRoleChange() {
+    if (!roleReason.trim() || !roleDialog) return;
     try {
-      await admin.updateRole(userId, newRole, reason);
+      await admin.updateRole(roleDialog.userId, roleDialog.newRole, roleReason);
       const u = await admin.listUsers();
       setUsers(u);
     } catch (e) { alert(e.message); }
+    setRoleDialog(null);
+    setRoleReason("");
   }
 
   if (!user || user.role !== "admin") return null;
@@ -114,7 +124,7 @@ export default function AdminPanel() {
                 {/* Role change — admin only; requires reason (audited before write) */}
                 <Select
                   defaultValue={u.role}
-                  onValueChange={val => { if (val !== u.role) handleRoleChange(u.user_id, val); }}
+                  onValueChange={val => { if (val !== u.role) promptRoleChange(u.user_id, val); }}
                 >
                   <SelectTrigger className="w-32 h-7 text-xs">
                     <SelectValue />
@@ -192,6 +202,40 @@ export default function AdminPanel() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Role change confirmation dialog */}
+      {roleDialog && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-background rounded-lg shadow-xl p-6 w-full max-w-md space-y-4">
+            <h2 className="text-lg font-semibold">Confirm Role Change</h2>
+            <p className="text-sm text-muted-foreground">
+              Changing role to <strong>{roleDialog.newRole}</strong>. Provide a mandatory reason (this is audited).
+            </p>
+            <textarea
+              className="w-full border rounded px-3 py-2 text-sm h-20 resize-none"
+              placeholder="Enter reason for role change…"
+              value={roleReason}
+              onChange={e => setRoleReason(e.target.value)}
+              autoFocus
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                className="px-4 py-2 text-sm border rounded hover:bg-muted"
+                onClick={() => { setRoleDialog(null); setRoleReason(""); }}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded disabled:opacity-50"
+                disabled={!roleReason.trim()}
+                onClick={confirmRoleChange}
+              >
+                Confirm Change
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

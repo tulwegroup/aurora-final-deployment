@@ -25,6 +25,7 @@ import DeploymentSetupGuide from './pages/DeploymentSetupGuide';
 import ProductionDashboard from './pages/ProductionDashboard';
 import GoLiveChecklist from './pages/GoLiveChecklist';
 import APITestConsole from './pages/APITestConsole';
+import DataRoom from './pages/DataRoom';
 // Add page imports here
 
 const AuthenticatedApp = () => {
@@ -75,6 +76,7 @@ const AuthenticatedApp = () => {
         <Route path="/ops" element={<ProductionDashboard />} />
         <Route path="/go-live" element={<GoLiveChecklist />} />
         <Route path="/api-console" element={<APITestConsole />} />
+        <Route path="/data-room" element={<DataRoom />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
