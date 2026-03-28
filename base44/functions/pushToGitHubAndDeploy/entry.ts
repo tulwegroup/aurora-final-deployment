@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
     }
 
     // Step 3: Trigger AWS CodeBuild
-    const codeBuildProjectName = 'aurora-vnext-build';
+    const codeBuildProjectName = 'aurora-api-build';
     const buildResponse = await fetch(
       'https://codebuild.us-east-1.amazonaws.com/batch/start-build',
       {
