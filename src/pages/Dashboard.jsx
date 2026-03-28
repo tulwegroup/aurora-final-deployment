@@ -3,13 +3,14 @@
  */
 import { useEffect, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
+import { base44 } from "@/api/base44Client";
 import { scans } from "../lib/auroraApi";
 import { ScanStatusBadge } from "../components/ScanStatusBadge";
 import MissingValue from "../components/MissingValue";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
-  Loader2, RefreshCw, ArrowRight,
+  Loader2, RefreshCw, ArrowRight, Cloud, CheckCircle, AlertCircle,
   Workflow, History, BarChart3, FileText, Lock, Map, FlaskConical
 } from "lucide-react";
 import { Link as RouterLink } from "react-router-dom";
@@ -25,10 +26,12 @@ const QUICK_ACTIONS = [
 ];
 
 export default function Dashboard() {
-  const { user }              = useOutletContext() || {};
-  const [active, setActive]   = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState(null);
+  const { user }                  = useOutletContext() || {};
+  const [active, setActive]       = useState(null);
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState(null);
+  const [buildLoading, setBuildLoading] = useState(false);
+  const [buildStatus, setBuildStatus]   = useState(null);
 
   async function load() {
     setLoading(true);
@@ -45,22 +48,73 @@ export default function Dashboard() {
 
   useEffect(() => { load(); }, []);
 
+  async function triggerBuild() {
+    setBuildLoading(true);
+    setBuildStatus(null);
+    try {
+      const res = await base44.functions.invoke('triggerCodeBuild', {});
+      setBuildStatus({ success: true, data: res.data });
+    } catch (e) {
+      setBuildStatus({ success: false, error: e.message });
+    } finally {
+      setBuildLoading(false);
+    }
+  }
+
   const greeting = user?.full_name
     ? `Welcome, ${user.full_name.split(" ")[0]}`
     : "Aurora OSI Dashboard";
 
   return (
     <div className="p-6 space-y-7 max-w-5xl">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold">{greeting}</h1>
           <p className="text-muted-foreground text-sm mt-1">Aurora Orbital Scan Intelligence — vNext</p>
         </div>
-        <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-          <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+          <Button size="sm" onClick={triggerBuild} disabled={buildLoading} className="gap-2">
+            <Cloud className="w-4 h-4" />
+            {buildLoading ? "Building..." : "Publish to AWS"}
+          </Button>
+        </div>
       </div>
+
+      {buildStatus && (
+        <Card className={buildStatus.success ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}>
+          <CardContent className="py-3 px-4 flex items-start gap-3">
+            {buildStatus.success ? (
+              <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+            ) : (
+              <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+            )}
+            <div className="flex-1 text-sm space-y-1">
+              <p className="font-medium">
+                {buildStatus.success ? "Build triggered successfully" : "Build failed"}
+              </p>
+              {buildStatus.success ? (
+                <>
+                  <p className="text-xs text-muted-foreground">Build ID: <span className="font-mono">{buildStatus.data.build.id}</span></p>
+                  <a
+                    href={buildStatus.data.monitoring.console_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-emerald-700 underline hover:text-emerald-900"
+                  >
+                    View in AWS Console →
+                  </a>
+                </>
+              ) : (
+                <p className="text-xs text-red-700">{buildStatus.error}</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Ghana Gold demo banner */}
       <RouterLink to="/workflow?demo=ghana-gold">
@@ -137,7 +191,7 @@ export default function Dashboard() {
       </div>
 
       <p className="text-[11px] text-muted-foreground border-t pt-4">
-        Aurora OSI vNext · All displayed values sourced verbatim from canonical API records.
+        Aurora OSI vNext · All displayed values sourced verbatim from canonical API records. | <a href="/health" className="underline hover:text-foreground">API Health</a>
       </p>
     </div>
   );
