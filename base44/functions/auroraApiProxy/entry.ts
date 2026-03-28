@@ -16,12 +16,17 @@ Deno.serve(async (req) => {
     }
 
     const url = new URL(req.url);
-    const path = url.pathname.replace('/auroraApiProxy', '');
+    let path = url.pathname.replace('/auroraApiProxy', '');
+    // Remove duplicate /api/v1 if present in path
+    if (path.startsWith('/api/v1')) {
+      path = path.substring(7);
+    }
     const query = url.search;
     const method = req.method;
     const body = method !== 'GET' && method !== 'HEAD' ? await req.text() : null;
 
     const auroraUrl = `${AURORA_API}${path}${query}`;
+    console.log('Proxying:', auroraUrl);
     const headers = new Headers(req.headers);
     headers.delete('host');
     headers.delete('cookie');
