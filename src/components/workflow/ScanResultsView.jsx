@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Loader2, Map, Box, FileText, ChevronRight, ExternalLink, AlertTriangle } from "lucide-react";
 import { base44 } from "@/api/base44Client";
+import { GHANA_SCAN_RESULT } from "../../lib/demoData";
 
 const TIER_STYLES = {
   TIER_1: "bg-emerald-100 text-emerald-800",
@@ -20,14 +21,14 @@ const TIER_STYLES = {
   TIER_3: "bg-amber-100 text-amber-800",
 };
 
-export default function ScanResultsView({ scanId, aoi, onExport }) {
-  const [scan,    setScan]    = useState(null);
-  const [loading, setLoading] = useState(true);
+export default function ScanResultsView({ scanId, aoi, onExport, demoMode }) {
+  const [scan,    setScan]    = useState(demoMode ? GHANA_SCAN_RESULT : null);
+  const [loading, setLoading] = useState(!demoMode);
   const [error,   setError]   = useState(null);
-  const [polling, setPolling] = useState(true);
+  const [polling, setPolling] = useState(!demoMode);
 
   useEffect(() => {
-    if (!scanId) return;
+    if (demoMode || !scanId) return;
     let timer;
     async function poll() {
       try {
@@ -48,7 +49,7 @@ export default function ScanResultsView({ scanId, aoi, onExport }) {
     }
     poll();
     return () => clearTimeout(timer);
-  }, [scanId]);
+  }, [scanId, demoMode]);
 
   if (loading) return (
     <div className="flex items-center justify-center py-24 gap-2 text-muted-foreground">

@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { MapPin, Upload, Pencil, ChevronRight } from "lucide-react";
 import { base44 } from "@/api/base44Client";
+import { GHANA_AOI, GHANA_BBOX } from "../../lib/demoData";
 
 const INPUT_MODES = [
   { id: "draw",   label: "Draw on Map",        icon: Pencil },
@@ -14,18 +15,19 @@ const INPUT_MODES = [
   { id: "upload", label: "Upload KML/GeoJSON",  icon: Upload },
 ];
 
-export default function AOIStep({ onDone }) {
+export default function AOIStep({ onDone, demoMode }) {
   const [mode, setMode]             = useState("bbox");
-  const [minLat, setMinLat]         = useState("");
-  const [maxLat, setMaxLat]         = useState("");
-  const [minLon, setMinLon]         = useState("");
-  const [maxLon, setMaxLon]         = useState("");
+  const [minLat, setMinLat]         = useState(demoMode ? GHANA_BBOX.minLat : "");
+  const [maxLat, setMaxLat]         = useState(demoMode ? GHANA_BBOX.maxLat : "");
+  const [minLon, setMinLon]         = useState(demoMode ? GHANA_BBOX.minLon : "");
+  const [maxLon, setMaxLon]         = useState(demoMode ? GHANA_BBOX.maxLon : "");
   const [file, setFile]             = useState(null);
   const [validating, setValidating] = useState(false);
   const [error, setError]           = useState(null);
-  const [result, setResult]         = useState(null);
+  const [result, setResult]         = useState(demoMode ? GHANA_AOI : null);
 
   async function handleValidate() {
+    if (demoMode) { setResult(GHANA_AOI); return; }
     setValidating(true);
     setError(null);
     try {

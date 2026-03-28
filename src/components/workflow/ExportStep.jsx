@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Shield, Link, Copy, CheckCircle, RotateCcw, Lock } from "lucide-react";
 import { base44 } from "@/api/base44Client";
+import { GHANA_PACKAGE, GHANA_DELIVERY_LINK } from "../../lib/demoData";
 
 const ARTIFACT_LABELS = {
   canonical_scan_json:  "Canonical Scan JSON",
@@ -28,7 +29,7 @@ const TTL_OPTIONS = [
   { value: "30d",  label: "30 days" },
 ];
 
-export default function ExportStep({ scanId, onRestart }) {
+export default function ExportStep({ scanId, onRestart, demoMode }) {
   const [ttl,          setTtl]        = useState("48h");
   const [singleUse,    setSingleUse]  = useState(false);
   const [watermark,    setWatermark]  = useState(true);
@@ -43,6 +44,14 @@ export default function ExportStep({ scanId, onRestart }) {
   async function handleBuild() {
     setBuilding(true);
     setError(null);
+    if (demoMode) {
+      setTimeout(() => {
+        setPkg(GHANA_PACKAGE);
+        setLink(GHANA_DELIVERY_LINK);
+        setBuilding(false);
+      }, 1200);
+      return;
+    }
     try {
       const res = await base44.functions.invoke("buildDataRoom", {
         scan_id:    scanId,

@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, ChevronLeft, ChevronRight, Info } from "lucide-react";
 import { base44 } from "@/api/base44Client";
+import { GHANA_COST_ESTIMATE, DEMO_SCAN_ID } from "../../lib/demoData";
 
 const COMMODITIES  = ["gold", "copper", "nickel", "lithium", "petroleum"];
 const RESOLUTIONS  = [
@@ -18,11 +19,11 @@ const RESOLUTIONS  = [
   { value: "high",     label: "High (250 m cells)",   note: "Detailed, higher cost" },
 ];
 
-export default function ScanParamsStep({ aoi, onDone, onBack }) {
-  const [commodity,   setCommodity]   = useState("gold");
+export default function ScanParamsStep({ aoi, onDone, onBack, demoMode }) {
+  const [commodity,   setCommodity]   = useState(demoMode ? "gold" : "gold");
   const [resolution,  setResolution]  = useState("standard");
   const [submitting,  setSubmitting]  = useState(false);
-  const [costEst,     setCostEst]     = useState(null);
+  const [costEst,     setCostEst]     = useState(demoMode ? GHANA_COST_ESTIMATE : null);
   const [error,       setError]       = useState(null);
 
   async function fetchCost(res) {
@@ -40,6 +41,11 @@ export default function ScanParamsStep({ aoi, onDone, onBack }) {
   }
 
   async function handleSubmit() {
+    if (demoMode) {
+      setSubmitting(true);
+      setTimeout(() => { onDone({ commodity: "gold", resolution }, DEMO_SCAN_ID); }, 800);
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {

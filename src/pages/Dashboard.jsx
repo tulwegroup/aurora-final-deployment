@@ -10,8 +10,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   Loader2, RefreshCw, ArrowRight,
-  Workflow, History, BarChart3, FileText, Lock, Map
+  Workflow, History, BarChart3, FileText, Lock, Map, FlaskConical
 } from "lucide-react";
+import { Link as RouterLink } from "react-router-dom";
 import APIOffline from "../components/APIOffline";
 
 const QUICK_ACTIONS = [
@@ -61,25 +62,20 @@ export default function Dashboard() {
         </Button>
       </div>
 
-      {/* Quick actions */}
-      <div>
-        <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">Quick Access</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {QUICK_ACTIONS.map(({ to, icon: Icon, label, desc }, i) => (
-            <Link key={to} to={to}>
-              <div className={`rounded-xl p-4 h-full transition-all cursor-pointer border hover:border-primary/40 hover:bg-muted/40 ${
-                i === 0 ? "bg-primary text-primary-foreground border-primary" : ""
-              }`}>
-                <Icon className="w-5 h-5 mb-2 opacity-80" />
-                <div className="font-semibold text-sm">{label}</div>
-                <div className={`text-xs mt-0.5 ${i === 0 ? "opacity-75" : "text-muted-foreground"}`}>{desc}</div>
-              </div>
-            </Link>
-          ))}
+      {/* Ghana Gold demo banner */}
+      <RouterLink to="/workflow?demo=ghana-gold">
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-5 py-4 flex items-center gap-4 hover:bg-amber-100 transition-colors cursor-pointer">
+          <FlaskConical className="w-8 h-8 text-amber-600 shrink-0" />
+          <div className="flex-1">
+            <div className="font-semibold text-amber-900 text-sm">🇬🇭 Ghana Gold Demo — Ashanti Belt</div>
+            <div className="text-xs text-amber-700 mt-0.5">Run a full end-to-end scan workflow with pre-loaded Ashanti Belt data. No backend required.</div>
+          </div>
+          <span className="text-xs bg-amber-200 text-amber-800 px-2.5 py-1 rounded-full font-medium shrink-0">Launch Demo →</span>
         </div>
-      </div>
+      </RouterLink>
 
-      {/* Active scans */}
+      {/* Quick actions */}
+
       <div>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Active Scan Queue</h2>
