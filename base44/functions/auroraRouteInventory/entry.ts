@@ -4,7 +4,7 @@
  * Useful for diagnosing route/ALB target routing mismatches
  */
 
-const AURORA_CANONICAL = 'https://api.aurora-osi.io';
+const AURORA_CANONICAL = 'https://api.aurora-osi.com';
 
 // Expected mounted routes based on Aurora FastAPI schema
 const EXPECTED_ROUTES = {
@@ -99,7 +99,7 @@ Deno.serve(async (req) => {
       },
       routes_by_domain: EXPECTED_ROUTES,
       deployment_notes: {
-        frontend_base_url: 'https://api.aurora-osi.io/api/v1',
+        frontend_base_url: 'https://api.aurora-osi.com/api/v1',
         protocol: 'https',
         cors_origin: 'Frontend origin to be configured in Aurora FastAPI app.add_middleware()',
         alb_target_group: 'aurora-api-tg pointing to ECS service',
@@ -109,7 +109,7 @@ Deno.serve(async (req) => {
         step_1: 'Verify ALB target health in AWS Console',
         step_2: 'Check FastAPI app.include_router() mounts in main.py',
         step_3: 'Confirm api.aurora-osi.io DNS points to ALB',
-        step_4: 'Test: curl https://api.aurora-osi.io/health',
+        step_4: 'Test: curl https://api.aurora-osi.com/health',
         step_5: 'If 404: check route prefix in FastAPI routers',
         step_6: 'If connection refused: verify ALB listens on 443 with HTTPS',
       },

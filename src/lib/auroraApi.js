@@ -10,9 +10,9 @@
 
 // Canonical production Aurora API endpoint
 // Routes through CloudFront / ALB with proper CORS & routing
-const BASE = 'https://api.aurora-osi.io/api/v1';
+const BASE = 'https://api.aurora-osi.com/api/v1';
 
-export const API_ROOT = 'https://api.aurora-osi.io';
+export const API_ROOT = 'https://api.aurora-osi.com';
 
 let _accessToken = null;
 

@@ -1,10 +1,10 @@
 /**
  * diagnoseAuroraRoutes — Test mounted Aurora API routes against production canonical domain
- * Diagnostic only: tests https://api.aurora-osi.io for route mounting and ALB target health
+ * Diagnostic only: tests https://api.aurora-osi.com for route mounting and ALB target health
  * Safe to call from frontend; returns route availability + response codes
  */
 
-const AURORA_CANONICAL = 'https://api.aurora-osi.io';
+const AURORA_CANONICAL = 'https://api.aurora-osi.com';
 
 const ROUTES_TO_TEST = [
   { method: 'GET', path: '/health' },

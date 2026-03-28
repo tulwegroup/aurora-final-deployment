@@ -6,7 +6,7 @@
 
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
-const AURORA_CANONICAL = 'https://api.aurora-osi.io';
+const AURORA_CANONICAL = 'https://api.aurora-osi.com';
 const ALB_DNS = 'aurora-alb-1663263128.us-east-1.elb.amazonaws.com';
 
 const CRITICAL_ROUTES = [
@@ -154,10 +154,10 @@ Deno.serve(async (req) => {
     const hasCloudFront = results.interpretation.dns.layers.includes('CloudFront');
 
     if (dnsOk && routesMounted) {
-      results.interpretation.status = 'READY_FOR_PRODUCTION';
+    results.interpretation.status = 'READY_FOR_PRODUCTION';
       results.remediation = {
         action: 'Apply final frontend configuration',
-        frontend_base_url: 'https://api.aurora-osi.io/api/v1',
+        frontend_base_url: 'https://api.aurora-osi.com/api/v1',
         cors_required: true,
         cors_origin: 'Detect from frontend deployment and configure in Aurora main.py',
         next_steps: [
