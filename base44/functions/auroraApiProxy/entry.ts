@@ -38,10 +38,19 @@ Deno.serve(async (req) => {
     });
 
     const responseBody = await auroraRes.text();
+    
+    // Log error responses for debugging
+    if (!auroraRes.ok) {
+      console.error(`Aurora API error ${auroraRes.status}:`, responseBody.substring(0, 500));
+    }
+    
+    // Return raw response
     return new Response(responseBody, {
       status: auroraRes.status,
+      statusText: auroraRes.statusText,
       headers: new Headers({
         'Content-Type': auroraRes.headers.get('content-type') || 'application/json',
+        'Access-Control-Allow-Origin': '*',
       }),
     });
   } catch (error) {
