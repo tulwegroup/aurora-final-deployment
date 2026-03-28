@@ -32,6 +32,7 @@ import InvestorDossier from './pages/InvestorDossier';
 import LiveScanConsole from './pages/LiveScanConsole';
 import LiveScanViewer from './pages/LiveScanViewer';
 import DynamicReportPage from './pages/DynamicReportPage';
+import APIHealthDiagnostics from './pages/APIHealthDiagnostics';
 // Add page imports here
 
 const AuthenticatedApp = () => {
@@ -92,6 +93,7 @@ const AuthenticatedApp = () => {
         <Route path="/scan/live/:scanId" element={<LiveScanViewer />} />
         <Route path="/report/:scanId" element={<DynamicReportPage />} />
         <Route path="/report" element={<DynamicReportPage />} />
+        <Route path="/health" element={<APIHealthDiagnostics />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
