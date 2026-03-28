@@ -1,6 +1,6 @@
 /**
  * triggerCodeBuild — Manually trigger AWS CodeBuild deployment
- * Uses AWS SDK v3 (available via npm:)
+ * Uses AWS SDK v3 signature with JSON-RPC API
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
@@ -23,14 +23,13 @@ Deno.serve(async (req) => {
       return Response.json(
         {
           status: 'error',
-          message: 'AWS credentials not configured in secrets',
-          action: 'Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in dashboard settings',
+          message: 'AWS credentials not configured',
         },
         { status: 500 }
       );
     }
 
-    // Make direct HTTP request to AWS CodeBuild API with SigV4 signing
+    // CodeBuild API payload
     const payload = {
       projectName: BUILD_PROJECT,
       sourceVersion: 'main',
@@ -41,12 +40,9 @@ Deno.serve(async (req) => {
     };
 
     const payloadJson = JSON.stringify(payload);
-    const url = `https://codebuild.${AWS_REGION}.amazonaws.com/batch/start-build`;
-
-    // Use AWS Signature Version 4
     const response = await makeAWSRequest(
       'POST',
-      url,
+      `https://codebuild.${AWS_REGION}.amazonaws.com/`,
       payloadJson,
       AWS_ACCESS_KEY_ID,
       AWS_SECRET_ACCESS_KEY,
@@ -55,15 +51,9 @@ Deno.serve(async (req) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('AWS CodeBuild API error:', errorText);
-
+      console.error('AWS error:', errorText);
       return Response.json(
-        {
-          status: 'error',
-          message: 'CodeBuild API request failed',
-          http_status: response.status,
-          fallback: `Manually trigger at: https://console.aws.amazon.com/codesuite/codebuild/projects/${BUILD_PROJECT}`,
-        },
+        { status: 'error', message: errorText.slice(0, 200) },
         { status: response.status }
       );
     }
@@ -73,11 +63,7 @@ Deno.serve(async (req) => {
 
     if (!buildId) {
       return Response.json(
-        {
-          status: 'error',
-          message: 'No build ID in AWS response',
-          details: buildData,
-        },
+        { status: 'error', message: 'No build ID returned' },
         { status: 500 }
       );
     }
@@ -101,38 +87,32 @@ Deno.serve(async (req) => {
   }
 });
 
-/**
- * AWS Signature Version 4 signing
- */
 async function makeAWSRequest(method, url, body, accessKeyId, secretAccessKey, region) {
   const service = 'codebuild';
-  const host = `codebuild.${region}.amazonaws.com`;
+  const host = 'codebuild.' + region + '.amazonaws.com';
   const now = new Date();
   
-  // Format dates
   const amzDate = now.toISOString().replace(/[:-]/g, '').split('.')[0] + 'Z';
   const dateStamp = now.toISOString().split('T')[0].replace(/-/g, '');
 
-  // Hash payload
   const payloadHash = await sha256Hash(body);
 
-  // Canonical request
+  // Canonical request for AWS SigV4
+  const canonicalUri = '/';
+  const canonicalQueryString = '';
   const canonicalHeaders = `host:${host}\nx-amz-date:${amzDate}\n`;
   const signedHeaders = 'host;x-amz-date';
-  const canonicalRequest = `${method}\n/batch/start-build\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
 
-  // String to sign
+  const canonicalRequest = `${method}\n${canonicalUri}\n${canonicalQueryString}\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
+
   const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
   const canonicalRequestHash = await sha256Hash(canonicalRequest);
   const stringToSign = `AWS4-HMAC-SHA256\n${amzDate}\n${credentialScope}\n${canonicalRequestHash}`;
 
-  // Calculate signature
   const signature = await calculateSignature(stringToSign, secretAccessKey, dateStamp, region, service);
 
-  // Authorization header
   const authHeader = `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
-  // Make request
   return fetch(url, {
     method,
     headers: {
@@ -157,14 +137,12 @@ async function sha256Hash(data) {
 async function calculateSignature(stringToSign, secretAccessKey, dateStamp, region, service) {
   const encoder = new TextEncoder();
   
-  // Key derivation
   const kSecret = encoder.encode('AWS4' + secretAccessKey);
   const kDate = await hmacSha256(kSecret, dateStamp);
   const kRegion = await hmacSha256(kDate, region);
   const kService = await hmacSha256(kRegion, service);
   const kSigning = await hmacSha256(kService, 'aws4_request');
   
-  // Sign string
   const signature = await hmacSha256(kSigning, stringToSign);
   return signature;
 }
@@ -184,7 +162,6 @@ async function hmacSha256(key, message) {
 
   const signature = await crypto.subtle.sign('HMAC', cryptoKey, msgData);
   
-  // Convert to hex if it's an ArrayBuffer, return as-is for Uint8Array
   if (signature instanceof ArrayBuffer) {
     const array = new Uint8Array(signature);
     return array.map(b => b.toString(16).padStart(2, '0')).join('');
