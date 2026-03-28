@@ -1,31 +1,20 @@
 /**
- * MapDrawTool — Google Maps-based AOI drawing surface
- * Phase AA §AA.10
- *
- * Provides: polygon draw, rectangle draw, KML/GeoJSON file upload.
- * On geometry ready → calls onGeometryReady(geoJsonGeometry).
+ * MapDrawTool — Leaflet-based AOI drawing surface
+ * Uses react-leaflet (already installed). No Google Maps API key required.
+ * Supports: rectangle draw, polygon draw (manual coords), KML/GeoJSON upload.
  *
  * CONSTITUTIONAL RULES:
- *   - This component only captures and reports geometry.
- *   - No scoring, tier derivation, or ACIF computation.
+ *   - Captures and reports geometry only. No scoring/computation.
  *   - Geometry passed verbatim to parent — no modification.
- *   - File uploads are parsed client-side and passed as GeoJSON.
- *
- * Google Maps API: loaded dynamically. Requires REACT_APP_GMAPS_KEY env var
- * or equivalent configuration. Falls back to coordinate input if maps unavailable.
  */
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Upload, Pen, Square, AlertTriangle } from "lucide-react";
+import { Upload, Square, AlertTriangle, MapPin } from "lucide-react";
 
-const DRAW_MODES = [
-  { id: "polygon",   label: "Polygon",   icon: Pen },
-  { id: "rectangle", label: "Rectangle", icon: Square },
-];
-
+// Parse KML into GeoJSON polygon geometry
 function parseKML(text) {
   const parser = new DOMParser();
-  const doc    = parser.parseFromString(text, "application/xml");
+  const doc = parser.parseFromString(text, "application/xml");
   const coords = doc.querySelector("coordinates");
   if (!coords) return null;
   const pairs = coords.textContent.trim().split(/\s+/).map(c => {
@@ -33,8 +22,7 @@ function parseKML(text) {
     return [lon, lat];
   });
   if (pairs.length < 3) return null;
-  if (pairs[0][0] !== pairs[pairs.length - 1][0] ||
-      pairs[0][1] !== pairs[pairs.length - 1][1]) {
+  if (pairs[0][0] !== pairs[pairs.length - 1][0] || pairs[0][1] !== pairs[pairs.length - 1][1]) {
     pairs.push(pairs[0]);
   }
   return { type: "Polygon", coordinates: [pairs] };
@@ -51,127 +39,148 @@ function parseGeoJSON(text) {
   return null;
 }
 
-// Manual coordinate input fallback
-function ManualCoordInput({ onGeometryReady }) {
-  const [text, setText] = useState("");
-  const [err, setErr]   = useState(null);
+// BBox input for quick AOI definition (always available, no map needed for this path)
+function BBoxInput({ onGeometryReady, defaultBbox }) {
+  const [minLat, setMinLat] = useState(defaultBbox?.minLat || "");
+  const [maxLat, setMaxLat] = useState(defaultBbox?.maxLat || "");
+  const [minLon, setMinLon] = useState(defaultBbox?.minLon || "");
+  const [maxLon, setMaxLon] = useState(defaultBbox?.maxLon || "");
+  const [err, setErr] = useState(null);
 
-  function handleParse() {
-    try {
-      const lines = text.trim().split("\n").map(l => {
-        const [lat, lon] = l.split(",").map(Number);
-        if (isNaN(lat) || isNaN(lon)) throw new Error("Invalid coordinate pair");
-        return [lon, lat];
-      });
-      if (lines.length < 3) throw new Error("Need at least 3 coordinate pairs");
-      const ring = [...lines];
-      if (ring[0][0] !== ring[ring.length - 1][0] ||
-          ring[0][1] !== ring[ring.length - 1][1]) {
-        ring.push(ring[0]);
-      }
-      setErr(null);
-      onGeometryReady({ type: "Polygon", coordinates: [ring] });
-    } catch (e) {
-      setErr(e.message);
-    }
+  function submit() {
+    const vals = [+minLat, +maxLat, +minLon, +maxLon];
+    if (vals.some(isNaN)) { setErr("All fields must be valid numbers."); return; }
+    if (+minLat >= +maxLat) { setErr("Min Lat must be less than Max Lat."); return; }
+    if (+minLon >= +maxLon) { setErr("Min Lon must be less than Max Lon."); return; }
+    setErr(null);
+    const mnLa = +minLat, mxLa = +maxLat, mnLo = +minLon, mxLo = +maxLon;
+    onGeometryReady({
+      type: "Polygon",
+      coordinates: [[
+        [mnLo, mnLa], [mxLo, mnLa], [mxLo, mxLa], [mnLo, mxLa], [mnLo, mnLa]
+      ]]
+    });
   }
 
   return (
-    <div className="space-y-2 p-4">
-      <p className="text-xs text-muted-foreground">
-        Enter coordinates as lat,lon pairs (one per line):
-      </p>
-      <textarea
-        className="w-full h-32 text-xs font-mono border rounded px-2 py-1 resize-none"
-        placeholder={"-33.8688, 151.2093\n-33.9, 151.25\n-33.85, 151.3\n-33.8688, 151.2093"}
-        value={text}
-        onChange={e => setText(e.target.value)}
-      />
+    <div className="space-y-3 p-4">
+      <p className="text-xs text-muted-foreground font-medium">Enter bounding box coordinates (WGS84):</p>
+      <div className="grid grid-cols-2 gap-2">
+        {[["Min Lat", minLat, setMinLat, "-90 to 90"], ["Max Lat", maxLat, setMaxLat, "-90 to 90"],
+          ["Min Lon", minLon, setMinLon, "-180 to 180"], ["Max Lon", maxLon, setMaxLon, "-180 to 180"]].map(([lbl, val, setter, ph]) => (
+          <div key={lbl} className="space-y-1">
+            <label className="text-[10px] text-muted-foreground uppercase tracking-wide">{lbl}</label>
+            <input type="number" step="any" value={val} onChange={e => setter(e.target.value)}
+              placeholder={ph} className="w-full border rounded px-2 py-1.5 text-sm" />
+          </div>
+        ))}
+      </div>
       {err && <p className="text-xs text-destructive">{err}</p>}
-      <Button size="sm" onClick={handleParse} disabled={!text.trim()}>
-        Use These Coordinates
+      <Button size="sm" onClick={submit}
+        disabled={[minLat, maxLat, minLon, maxLon].some(v => v === "")}>
+        Use Bounding Box
       </Button>
     </div>
   );
 }
 
-export default function MapDrawTool({ onGeometryReady, savedAOI }) {
-  const mapRef    = useRef(null);
-  const gmapsRef  = useRef(null);
-  const [drawMode, setDrawMode] = useState("polygon");
-  const [mapReady, setMapReady] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [uploadErr, setUploadErr] = useState(null);
+// Leaflet map component — loaded lazily so it doesn't crash if CSS not ready
+function LeafletMap({ onGeometryReady, center = [7, -1.5] }) {
+  const mapRef = useRef(null);
+  const leafletRef = useRef(null);
+  const [drawing, setDrawing] = useState(false);
+  const [points, setPoints] = useState([]);
+  const [rect, setRect] = useState(null);
+  const [mode, setMode] = useState("rectangle"); // "rectangle" | "polygon"
 
-  // Attempt to load Google Maps
   useEffect(() => {
-    const key = window.__GMAPS_KEY__ || import.meta?.env?.VITE_GMAPS_KEY;
-    if (!key) {
-      setMapReady(false);
-      return;
-    }
-    if (window.google?.maps) {
-      setMapReady(true);
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=drawing`;
-    script.async = true;
-    script.onload  = () => setMapReady(true);
-    script.onerror = () => setMapReady(false);
-    document.head.appendChild(script);
+    if (leafletRef.current || !mapRef.current) return;
+    // Dynamically import leaflet
+    import("leaflet").then(L => {
+      // Ensure default icon works
+      delete L.Icon.Default.prototype._getIconUrl;
+      L.Icon.Default.mergeOptions({
+        iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+        iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+        shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+      });
+
+      const map = L.map(mapRef.current).setView(center, 5);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "© OpenStreetMap contributors",
+        maxZoom: 18,
+      }).addTo(map);
+
+      leafletRef.current = { L, map, layers: [] };
+
+      // Rectangle draw via drag
+      let startLatLng = null;
+      let rectLayer = null;
+
+      map.on("mousedown", (e) => {
+        if (!leafletRef.current._rectMode) return;
+        map.dragging.disable();
+        startLatLng = e.latlng;
+        if (rectLayer) { map.removeLayer(rectLayer); rectLayer = null; }
+      });
+
+      map.on("mousemove", (e) => {
+        if (!startLatLng || !leafletRef.current._rectMode) return;
+        if (rectLayer) map.removeLayer(rectLayer);
+        rectLayer = L.rectangle([startLatLng, e.latlng], {
+          color: "#3b82f6", fillOpacity: 0.2, weight: 2
+        }).addTo(map);
+      });
+
+      map.on("mouseup", (e) => {
+        if (!startLatLng || !leafletRef.current._rectMode) return;
+        map.dragging.enable();
+        if (!rectLayer) { startLatLng = null; return; }
+        const b = rectLayer.getBounds();
+        const sw = b.getSouthWest(), ne = b.getNorthEast();
+        const coords = [
+          [sw.lng, sw.lat], [ne.lng, sw.lat],
+          [ne.lng, ne.lat], [sw.lng, ne.lat], [sw.lng, sw.lat]
+        ];
+        onGeometryReady({ type: "Polygon", coordinates: [coords] });
+        startLatLng = null;
+        leafletRef.current._rectMode = false;
+        leafletRef.current.map.getContainer().style.cursor = "";
+      });
+    });
+
+    return () => {
+      if (leafletRef.current?.map) {
+        leafletRef.current.map.remove();
+        leafletRef.current = null;
+      }
+    };
   }, []);
 
-  // Initialise map + drawing manager
-  useEffect(() => {
-    if (!mapReady || !mapRef.current || gmapsRef.current) return;
-    const map = new window.google.maps.Map(mapRef.current, {
-      center: { lat: 0, lng: 20 },
-      zoom: 3,
-      mapTypeId: "terrain",
-    });
+  function startRectDraw() {
+    if (!leafletRef.current) return;
+    leafletRef.current._rectMode = true;
+    leafletRef.current.map.getContainer().style.cursor = "crosshair";
+  }
 
-    const dm = new window.google.maps.drawing.DrawingManager({
-      drawingMode: window.google.maps.drawing.OverlayType.POLYGON,
-      drawingControl: false,
-      polygonOptions:   { editable: true, fillOpacity: 0.2, strokeColor: "#0000ff" },
-      rectangleOptions: { editable: true, fillOpacity: 0.2, strokeColor: "#0000ff" },
-    });
-    dm.setMap(map);
-    gmapsRef.current = { map, dm };
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <Button size="sm" variant="outline" onClick={startRectDraw}>
+          <Square className="w-3.5 h-3.5 mr-1" /> Draw Rectangle
+        </Button>
+        <span className="text-xs text-muted-foreground self-center">Click and drag to draw AOI rectangle</span>
+      </div>
+      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+      <div ref={mapRef} className="w-full rounded-lg border bg-muted/20" style={{ height: 420 }} />
+    </div>
+  );
+}
 
-    window.google.maps.event.addListener(dm, "overlaycomplete", (e) => {
-      dm.setDrawingMode(null);
-      let geometry;
-      if (e.type === window.google.maps.drawing.OverlayType.POLYGON) {
-        const path = e.overlay.getPath().getArray();
-        const coords = path.map(p => [p.lng(), p.lat()]);
-        coords.push(coords[0]); // close ring
-        geometry = { type: "Polygon", coordinates: [coords] };
-      } else if (e.type === window.google.maps.drawing.OverlayType.RECTANGLE) {
-        const b = e.overlay.getBounds();
-        const ne = b.getNorthEast(), sw = b.getSouthWest();
-        const coords = [
-          [sw.lng(), sw.lat()], [ne.lng(), sw.lat()],
-          [ne.lng(), ne.lat()], [sw.lng(), ne.lat()],
-          [sw.lng(), sw.lat()],
-        ];
-        geometry = { type: "Polygon", coordinates: [coords] };
-      }
-      if (geometry) onGeometryReady(geometry);
-    });
-  }, [mapReady, onGeometryReady]);
-
-  // Update draw mode
-  useEffect(() => {
-    if (!gmapsRef.current) return;
-    const { dm } = gmapsRef.current;
-    const modeMap = {
-      polygon:   window.google?.maps?.drawing?.OverlayType?.POLYGON,
-      rectangle: window.google?.maps?.drawing?.OverlayType?.RECTANGLE,
-    };
-    dm?.setDrawingMode(modeMap[drawMode]);
-  }, [drawMode, mapReady]);
+export default function MapDrawTool({ onGeometryReady, savedAOI, defaultBbox }) {
+  const [activeTab, setActiveTab] = useState("map");
+  const [uploadErr, setUploadErr] = useState(null);
+  const [uploading, setUploading] = useState(false);
 
   function handleFileUpload(e) {
     const file = e.target.files?.[0];
@@ -188,8 +197,9 @@ export default function MapDrawTool({ onGeometryReady, savedAOI }) {
         } else {
           geometry = parseGeoJSON(text);
         }
-        if (!geometry) throw new Error("Could not extract polygon geometry from file.");
+        if (!geometry) throw new Error("Could not extract polygon from file.");
         onGeometryReady(geometry);
+        setActiveTab("map");
       } catch (err) {
         setUploadErr(err.message);
       } finally {
@@ -200,55 +210,57 @@ export default function MapDrawTool({ onGeometryReady, savedAOI }) {
     e.target.value = "";
   }
 
+  const TABS = [
+    { id: "map",   label: "🗺 Map Draw" },
+    { id: "bbox",  label: "⬜ Bounding Box" },
+    { id: "upload", label: "📁 Upload KML/GeoJSON" },
+  ];
+
   return (
     <div className="space-y-3">
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2">
-        {DRAW_MODES.map(({ id, label, icon: Icon }) => (
-          <Button
-            key={id}
-            size="sm"
-            variant={drawMode === id ? "default" : "outline"}
-            onClick={() => setDrawMode(id)}
-            disabled={!mapReady}
-          >
-            <Icon className="w-3.5 h-3.5 mr-1" />{label}
-          </Button>
+      {/* Tab bar */}
+      <div className="flex gap-1 border-b pb-2">
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setActiveTab(t.id)}
+            className={`px-3 py-1.5 rounded-md text-sm transition-colors ${
+              activeTab === t.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+            }`}>
+            {t.label}
+          </button>
         ))}
-        <label className="cursor-pointer">
-          <Button size="sm" variant="outline" asChild>
-            <span>
-              <Upload className="w-3.5 h-3.5 mr-1" />
-              {uploading ? "Uploading…" : "Upload KML/GeoJSON"}
-            </span>
-          </Button>
-          <input type="file" accept=".kml,.kmz,.geojson,.json" className="hidden"
-            onChange={handleFileUpload} />
-        </label>
       </div>
 
-      {uploadErr && (
-        <div className="flex items-center gap-1 text-xs text-destructive">
-          <AlertTriangle className="w-3 h-3" />{uploadErr}
+      {activeTab === "map" && (
+        <LeafletMap onGeometryReady={onGeometryReady} center={defaultBbox ? [(+defaultBbox.minLat + +defaultBbox.maxLat) / 2, (+defaultBbox.minLon + +defaultBbox.maxLon) / 2] : [7, -1.5]} />
+      )}
+
+      {activeTab === "bbox" && (
+        <BBoxInput onGeometryReady={onGeometryReady} defaultBbox={defaultBbox} />
+      )}
+
+      {activeTab === "upload" && (
+        <div className="p-4 space-y-3">
+          <p className="text-xs text-muted-foreground">Upload a KML or GeoJSON file containing a polygon geometry.</p>
+          <label className="cursor-pointer">
+            <Button size="sm" variant="outline" asChild>
+              <span>
+                <Upload className="w-3.5 h-3.5 mr-1" />
+                {uploading ? "Parsing…" : "Choose File"}
+              </span>
+            </Button>
+            <input type="file" accept=".kml,.kmz,.geojson,.json" className="hidden" onChange={handleFileUpload} />
+          </label>
+          {uploadErr && (
+            <div className="flex items-center gap-1 text-xs text-destructive">
+              <AlertTriangle className="w-3 h-3" />{uploadErr}
+            </div>
+          )}
         </div>
       )}
 
       {savedAOI && (
-        <div className="text-xs bg-emerald-50 text-emerald-700 rounded px-2 py-1">
-          AOI saved · hash: <span className="font-mono">{savedAOI.geometry_hash?.slice(0,16)}…</span>
-        </div>
-      )}
-
-      {/* Map canvas or fallback */}
-      {mapReady ? (
-        <div ref={mapRef} className="w-full h-96 rounded-lg border bg-muted/20" />
-      ) : (
-        <div className="border rounded-lg bg-muted/10">
-          <div className="px-4 py-2 border-b text-xs text-muted-foreground flex items-center gap-1">
-            <AlertTriangle className="w-3 h-3" />
-            Google Maps not configured. Enter coordinates manually below.
-          </div>
-          <ManualCoordInput onGeometryReady={onGeometryReady} />
+        <div className="text-xs bg-emerald-50 text-emerald-700 rounded px-3 py-2 border border-emerald-200">
+          ✓ AOI saved · hash: <span className="font-mono">{savedAOI.geometry_hash?.slice(0, 16)}…</span>
         </div>
       )}
 

@@ -23,9 +23,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, CheckCircle, AlertTriangle } from "lucide-react";
 
-const COMMODITIES = [
-  "gold", "copper", "iron", "nickel", "lithium",
-  "cobalt", "uranium", "diamonds", "pgm", "zinc",
+const COMMODITY_GROUPS = [
+  { group: "Precious Metals",  items: ["gold", "silver", "pgm"] },
+  { group: "Gemstones",        items: ["diamonds"] },
+  { group: "Base Metals",      items: ["copper", "nickel", "zinc", "lead", "tin", "iron"] },
+  { group: "Battery & EV",     items: ["lithium", "cobalt"] },
+  { group: "Strategic",        items: ["uranium", "tungsten", "molybdenum", "potash", "manganese", "chromite"] },
+  { group: "Bulk Minerals",    items: ["bauxite", "phosphate"] },
+  { group: "Hydrocarbons",     items: ["petroleum"] },
 ];
 
 const RESOLUTION_OPTIONS = [
@@ -220,17 +225,21 @@ export default function MapScanBuilder() {
               <Card>
                 <CardHeader className="pb-2"><CardTitle className="text-sm">Scan Parameters</CardTitle></CardHeader>
                 <CardContent className="space-y-3">
-                  <div className="space-y-1">
+                  <div className="space-y-2">
                     <label className="text-xs text-muted-foreground uppercase tracking-wide">Commodity</label>
-                    <select
-                      className="w-full text-sm border rounded px-2 py-1.5 bg-background"
-                      value={commodity}
-                      onChange={e => setCommodity(e.target.value)}
-                    >
-                      {COMMODITIES.map(c => (
-                        <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
-                      ))}
-                    </select>
+                    {COMMODITY_GROUPS.map(({ group, items }) => (
+                      <div key={group}>
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-1">{group}</div>
+                        <div className="flex flex-wrap gap-1">
+                          {items.map(c => (
+                            <button key={c} onClick={() => setCommodity(c)}
+                              className={`px-2 py-0.5 rounded-full border text-xs capitalize transition-colors ${
+                                commodity === c ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted"
+                              }`}>{c}</button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
 
                   <div className="space-y-1">

@@ -12,7 +12,29 @@ import { Loader2, ChevronLeft, ChevronRight, Info } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { GHANA_COST_ESTIMATE, DEMO_SCAN_ID } from "../../lib/demoData";
 
-const COMMODITIES  = ["gold", "copper", "nickel", "lithium", "petroleum"];
+const COMMODITIES = [
+  { value: "gold",        label: "Gold",             group: "Precious Metals" },
+  { value: "silver",      label: "Silver",           group: "Precious Metals" },
+  { value: "pgm",         label: "PGM (Platinum Group)", group: "Precious Metals" },
+  { value: "diamonds",    label: "Diamonds",         group: "Gemstones" },
+  { value: "copper",      label: "Copper",           group: "Base Metals" },
+  { value: "nickel",      label: "Nickel",           group: "Base Metals" },
+  { value: "zinc",        label: "Zinc",             group: "Base Metals" },
+  { value: "lead",        label: "Lead",             group: "Base Metals" },
+  { value: "tin",         label: "Tin",              group: "Base Metals" },
+  { value: "iron",        label: "Iron Ore",         group: "Bulk Minerals" },
+  { value: "bauxite",     label: "Bauxite",          group: "Bulk Minerals" },
+  { value: "manganese",   label: "Manganese",        group: "Bulk Minerals" },
+  { value: "chromite",    label: "Chromite",         group: "Bulk Minerals" },
+  { value: "phosphate",   label: "Phosphate",        group: "Bulk Minerals" },
+  { value: "lithium",     label: "Lithium",          group: "Battery & EV" },
+  { value: "cobalt",      label: "Cobalt",           group: "Battery & EV" },
+  { value: "tungsten",    label: "Tungsten",         group: "Strategic" },
+  { value: "uranium",     label: "Uranium",          group: "Strategic" },
+  { value: "molybdenum",  label: "Molybdenum",       group: "Strategic" },
+  { value: "potash",      label: "Potash",           group: "Strategic" },
+  { value: "petroleum",   label: "Petroleum",        group: "Hydrocarbons" },
+];
 const RESOLUTIONS  = [
   { value: "low",      label: "Low (2 km cells)",     note: "Fast, regional overview" },
   { value: "standard", label: "Standard (500 m cells)", note: "Recommended for most AOIs" },
@@ -64,14 +86,22 @@ export default function ScanParamsStep({ aoi, onDone, onBack, demoMode }) {
       <div className="space-y-4">
         <Card>
           <CardHeader className="pb-3"><CardTitle className="text-base">Commodity</CardTitle></CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            {COMMODITIES.map(c => (
-              <button key={c}
-                onClick={() => setCommodity(c)}
-                className={`px-3 py-1.5 rounded-full border text-sm capitalize transition-colors ${
-                  commodity === c ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted"
-                }`}
-              >{c}</button>
+          <CardContent className="space-y-3">
+            {/* Group commodities */}
+            {[...new Set(COMMODITIES.map(c => c.group))].map(group => (
+              <div key={group}>
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-1.5">{group}</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {COMMODITIES.filter(c => c.group === group).map(c => (
+                    <button key={c.value}
+                      onClick={() => setCommodity(c.value)}
+                      className={`px-2.5 py-1 rounded-full border text-xs transition-colors ${
+                        commodity === c.value ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted"
+                      }`}
+                    >{c.label}</button>
+                  ))}
+                </div>
+              </div>
             ))}
           </CardContent>
         </Card>
