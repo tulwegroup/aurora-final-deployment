@@ -30,6 +30,8 @@ import UICoverage from './pages/UICoverage';
 import IntelligenceDossier from './pages/IntelligenceDossier';
 import InvestorDossier from './pages/InvestorDossier';
 import LiveScanConsole from './pages/LiveScanConsole';
+import LiveScanViewer from './pages/LiveScanViewer';
+import DynamicReportPage from './pages/DynamicReportPage';
 // Add page imports here
 
 const AuthenticatedApp = () => {
@@ -87,6 +89,9 @@ const AuthenticatedApp = () => {
         <Route path="/data-room" element={<DataRoom />} />
         <Route path="/coverage" element={<UICoverage />} />
         <Route path="/live-scan" element={<LiveScanConsole />} />
+        <Route path="/scan/live/:scanId" element={<LiveScanViewer />} />
+        <Route path="/report/:scanId" element={<DynamicReportPage />} />
+        <Route path="/report" element={<DynamicReportPage />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
