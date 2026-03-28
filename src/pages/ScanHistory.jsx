@@ -18,6 +18,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, ChevronLeft, ChevronRight, ArrowRight } from "lucide-react";
+import APIOffline from "../components/APIOffline";
 
 export default function ScanHistory() {
   const [data, setData]         = useState(null);
@@ -67,7 +68,7 @@ export default function ScanHistory() {
       </form>
 
       {loading && <div className="flex items-center gap-2 text-muted-foreground text-sm"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>}
-      {error   && <div className="text-sm text-destructive border border-destructive/30 rounded p-3">{error}</div>}
+      {error && <APIOffline error={error} endpoint="GET /api/v1/history" onRetry={() => load()} />}
 
       {!loading && data && (
         <>

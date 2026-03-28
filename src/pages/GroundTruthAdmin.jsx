@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, CheckCircle, XCircle, Clock, GitBranch, FileText } from "lucide-react";
 import GroundTruthTable from "../components/GroundTruthTable";
 import ProvenancePanel from "../components/ProvenancePanel";
+import APIOffline from "../components/APIOffline";
 
 const STATUS_STYLES = {
   pending:   "bg-yellow-100 text-yellow-800 border-yellow-300",
@@ -50,14 +51,12 @@ export default function GroundTruthAdmin() {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [recsRes, versRes, auditRes] = await Promise.all([
-        base44.functions.invoke("gtListRecords", {}),
-        base44.functions.invoke("gtListVersions", {}),
-        base44.functions.invoke("gtAuditLog", {}),
-      ]);
-      setRecords(recsRes.data || []);
-      setVersions(versRes.data || []);
-      setAuditLog(auditRes.data || []);
+      // Ground-truth backend functions (gtListRecords, gtListVersions, gtAuditLog)
+      // will be wired once the Aurora API Phase Z routers are mounted.
+      // For now, return empty arrays so the page renders without error.
+      setRecords([]);
+      setVersions([]);
+      setAuditLog([]);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -69,20 +68,16 @@ export default function GroundTruthAdmin() {
 
   async function handleApprove(record_id) {
     setActionLoading(true);
-    await base44.functions.invoke("gtApproveRecord", { record_id });
-    await fetchAll();
-    setSelected(null);
+    alert("Approve action — Aurora API Phase Z router not yet mounted.");
     setActionLoading(false);
   }
 
   async function handleReject(record_id) {
     if (!rejectReason.trim()) return;
     setActionLoading(true);
-    await base44.functions.invoke("gtRejectRecord", { record_id, reason: rejectReason });
+    alert("Reject action — Aurora API Phase Z router not yet mounted.");
     setShowRejectModal(false);
     setRejectReason("");
-    await fetchAll();
-    setSelected(null);
     setActionLoading(false);
   }
 
@@ -106,6 +101,10 @@ export default function GroundTruthAdmin() {
           Review, approve, and govern ground-truth calibration records.
         </p>
       </div>
+      <APIOffline
+        endpoint="GET /api/v1/ground-truth/records"
+        hint="Aurora API Phase Z ground-truth routers are not yet mounted in main.py. Records will appear here once the router is uncommented and the API is redeployed."
+      />
 
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4">

@@ -21,6 +21,7 @@ import MissingValue, { ValueOrMissing } from "../components/MissingValue";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2, ArrowLeft, Download } from "lucide-react";
+import APIOffline from "../components/APIOffline";
 import { Button } from "@/components/ui/button";
 
 // Progressive loading batch size
@@ -131,7 +132,7 @@ export default function TwinView() {
       <Loader2 className="w-4 h-4 animate-spin" /> Loading twin…
     </div>
   );
-  if (error) return <div className="p-6 text-destructive text-sm">{error}</div>;
+  if (error) return <div className="p-6"><APIOffline error={error} endpoint={`GET /api/v1/twin/${scanId}`} /></div>;
 
   return (
     <div className="p-6 space-y-5 max-w-7xl">

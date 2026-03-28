@@ -16,6 +16,7 @@ import MissingValue from "../components/MissingValue";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, RefreshCw, ArrowRight } from "lucide-react";
+import APIOffline from "../components/APIOffline";
 
 export default function Dashboard() {
   const { user }          = useOutletContext() || {};
@@ -57,8 +58,10 @@ export default function Dashboard() {
         </div>
       )}
 
-      {error && (
-        <div className="text-sm text-destructive border border-destructive/30 rounded p-3">{error}</div>
+      {error && <APIOffline error={error} endpoint="GET /api/v1/scan/active" onRetry={load} />}
+
+      {!loading && !error && !active && (
+        <APIOffline endpoint="GET /api/v1/scan/active" onRetry={load} hint="No response from Aurora API. The scan/active router may not be mounted yet." />
       )}
 
       {!loading && active && (

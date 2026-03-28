@@ -17,7 +17,8 @@ import PortfolioRankingTable from "../components/PortfolioRankingTable";
 import TerritoryCard from "../components/TerritoryCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, BarChart3, AlertTriangle, Info, Settings } from "lucide-react";
+import { Loader2, BarChart3, Info, Settings } from "lucide-react";
+import APIOffline from "../components/APIOffline";
 
 const COMMODITIES = ["", "gold", "copper", "lithium", "nickel"];
 const TERRITORIES  = ["", "country", "basin", "block", "concession", "province"];
@@ -135,11 +136,7 @@ export default function PortfolioView() {
         </div>
       )}
 
-      {error && (
-        <div className="flex items-center gap-2 text-destructive text-sm border border-destructive/30 bg-destructive/5 rounded-lg px-4 py-2">
-          <AlertTriangle className="w-4 h-4" /> {error}
-        </div>
-      )}
+      {error && <APIOffline error={error} endpoint="portfolioSnapshot backend function" onRetry={fetchSnapshot} hint="The portfolioSnapshot backend function needs to be deployed and wired to the Aurora API portfolio endpoints." />}
 
       {loading && (
         <div className="flex items-center justify-center py-12 gap-2 text-muted-foreground">

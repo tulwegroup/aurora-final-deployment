@@ -18,6 +18,7 @@ import MissingValue, { ValueOrMissing } from "../components/MissingValue";
 import TierDistribution from "../components/TierDistribution";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
+import APIOffline from "../components/APIOffline";
 import { Button } from "@/components/ui/button";
 
 export default function DatasetView() {
@@ -51,7 +52,7 @@ export default function DatasetView() {
   }
 
   if (loading) return <div className="p-6 flex items-center gap-2 text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>;
-  if (error)   return <div className="p-6 text-destructive text-sm">{error}</div>;
+  if (error)   return <div className="p-6"><APIOffline error={error} endpoint={`GET /api/v1/datasets/summary/${scanId}`} /></div>;
 
   const fmtPct = v => v !== null && v !== undefined ? `${(v * 100).toFixed(1)}%` : null;
 

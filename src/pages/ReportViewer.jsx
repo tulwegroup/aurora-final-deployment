@@ -23,6 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Loader2, ArrowLeft, FileText, Shield, AlertTriangle, Download } from "lucide-react";
+import APIOffline from "../components/APIOffline";
 
 // Mineral system logic — injected into prompt (approved entries from registry)
 // In production this is fetched from the backend registry
@@ -165,11 +166,7 @@ export default function ReportViewer() {
         </CardContent>
       </Card>
 
-      {error && (
-        <div className="flex items-center gap-2 text-destructive text-sm border border-destructive/30 bg-destructive/5 rounded-lg px-4 py-2">
-          <AlertTriangle className="w-4 h-4" /> {error}
-        </div>
-      )}
+      {error && <APIOffline error={error} endpoint="generateGeologicalReport backend function" onRetry={generateReport} />}
 
       {/* Report output */}
       {report && (

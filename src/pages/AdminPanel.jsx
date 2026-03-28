@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Shield, ChevronLeft, ChevronRight } from "lucide-react";
+import APIOffline from "../components/APIOffline";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const ROLE_BADGE = {
@@ -82,7 +83,7 @@ export default function AdminPanel() {
   if (!user || user.role !== "admin") return null;
 
   if (loading) return <div className="p-6 flex items-center gap-2 text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>;
-  if (error)   return <div className="p-6 text-destructive text-sm">{error}</div>;
+  if (error)   return <div className="p-6"><APIOffline error={error} endpoint="GET /api/v1/admin/users" /></div>;
 
   return (
     <div className="p-6 space-y-6 max-w-5xl">

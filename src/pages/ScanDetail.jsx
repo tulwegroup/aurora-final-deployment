@@ -19,6 +19,7 @@ import ScoreGrid from "../components/ScoreGrid";
 import TierDistribution from "../components/TierDistribution";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, ArrowLeft, GitBranch } from "lucide-react";
+import APIOffline from "../components/APIOffline";
 
 function Field({ label, children }) {
   return (
@@ -53,7 +54,7 @@ export default function ScanDetail() {
   }, [scanId]);
 
   if (loading) return <div className="p-6 flex items-center gap-2 text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>;
-  if (error)   return <div className="p-6 text-destructive text-sm">{error}</div>;
+  if (error)   return <div className="p-6"><APIOffline error={error} endpoint={`GET /api/v1/history/${scanId}`} /></div>;
   if (!scan)   return null;
 
   const fmtPct = v => v !== null && v !== undefined ? `${(v * 100).toFixed(1)}%` : null;
