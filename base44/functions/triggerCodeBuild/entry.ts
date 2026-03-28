@@ -1,67 +1,10 @@
 /**
- * triggerCodeBuild — Manually trigger AWS CodeBuild deployment
- * Starts a new build for aurora-vnext-build project
+ * triggerCodeBuild — Manually trigger AWS CodeBuild deployment via AWS CLI
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
 const AWS_REGION = 'us-east-1';
 const BUILD_PROJECT = 'aurora-vnext-build';
-
-// AWS CodeBuild API request signature (SigV4)
-async function signAWSRequest(method, url, body, accessKeyId, secretAccessKey) {
-  const crypto = await import('node:crypto');
-  const date = new Date();
-  const amzDate = date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-  const datestamp = date.toISOString().split('T')[0].replace(/-/g, '');
-
-  const algorithm = 'AWS4-HMAC-SHA256';
-  const service = 'codebuild';
-  const credentialScope = `${datestamp}/${AWS_REGION}/${service}/aws4_request`;
-
-  // Canonical request
-  const payloadHash = crypto.createHash('sha256').update(body || '').digest('hex');
-  const canonicalRequest = [
-    method,
-    '/batch/start-build',
-    '',
-    `host:codebuild.${AWS_REGION}.amazonaws.com`,
-    'x-amz-date:' + amzDate,
-    '',
-    'host;x-amz-date',
-    payloadHash,
-  ].join('\n');
-
-  const canonicalRequestHash = crypto
-    .createHash('sha256')
-    .update(canonicalRequest)
-    .digest('hex');
-
-  // String to sign
-  const stringToSign = [algorithm, amzDate, credentialScope, canonicalRequestHash].join('\n');
-
-  // Signature
-  const kSecret = 'AWS4' + secretAccessKey;
-  const kDate = crypto.createHmac('sha256', kSecret).update(datestamp).digest();
-  const kRegion = crypto.createHmac('sha256', kDate).update(AWS_REGION).digest();
-  const kService = crypto.createHmac('sha256', kRegion).update(service).digest();
-  const kSigning = crypto.createHmac('sha256', kService).update('aws4_request').digest();
-  const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex');
-
-  const authHeader = [
-    `${algorithm} Credential=${accessKeyId}/${credentialScope}`,
-    `SignedHeaders=host;x-amz-date`,
-    `Signature=${signature}`,
-  ].join(', ');
-
-  return {
-    headers: {
-      'Authorization': authHeader,
-      'Content-Type': 'application/x-amz-json-1.1',
-      'X-Amz-Date': amzDate,
-      'X-Amz-Target': 'CodeBuild_20161810.StartBuild',
-    },
-  };
-}
 
 Deno.serve(async (req) => {
   try {
@@ -74,87 +17,88 @@ Deno.serve(async (req) => {
 
     const AWS_ACCESS_KEY_ID = Deno.env.get('AWS_ACCESS_KEY_ID');
     const AWS_SECRET_ACCESS_KEY = Deno.env.get('AWS_SECRET_ACCESS_KEY');
-    const GITHUB_TOKEN = Deno.env.get('GITHUB_TOKEN');
+    const AURORA_DB_HOST = Deno.env.get('AURORA_DB_HOST');
 
     if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
       return Response.json(
-        { error: 'AWS credentials not configured' },
+        {
+          status: 'error',
+          message: 'AWS credentials not configured in secrets',
+          action: 'Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY',
+        },
         { status: 500 }
       );
     }
 
-    // Prepare CodeBuild start build request
-    const buildPayload = {
-      projectName: BUILD_PROJECT,
-      sourceVersion: 'main',
-      environmentVariables: [
-        {
-          name: 'GITHUB_REPO',
-          value: 'aurora-osi/aurora-vnext',
-          type: 'PLAINTEXT',
-        },
-        {
-          name: 'BRANCH',
-          value: 'main',
-          type: 'PLAINTEXT',
-        },
-        {
-          name: 'BUILD_TIMESTAMP',
-          value: new Date().toISOString(),
-          type: 'PLAINTEXT',
-        },
-        {
-          name: 'TRIGGERED_BY',
-          value: user.email || 'api',
-          type: 'PLAINTEXT',
-        },
+    // Use AWS CLI via subprocess to trigger build
+    const command = new Deno.Command('aws', {
+      args: [
+        'codebuild',
+        'start-build',
+        `--project-name=${BUILD_PROJECT}`,
+        `--region=${AWS_REGION}`,
+        '--environment-variables-override',
+        `name=TRIGGERED_BY,value=${user.email},type=PLAINTEXT`,
+        `name=BUILD_TIMESTAMP,value=${new Date().toISOString()},type=PLAINTEXT`,
       ],
-    };
+      env: {
+        AWS_ACCESS_KEY_ID,
+        AWS_SECRET_ACCESS_KEY,
+        AWS_DEFAULT_REGION: AWS_REGION,
+      },
+      stdout: 'piped',
+      stderr: 'piped',
+    });
 
-    const payloadStr = JSON.stringify(buildPayload);
+    const process = command.spawn();
+    const { success, stdout, stderr } = await process.output();
 
-    // Use AWS SDK via fetch to avoid complex SigV4 signing
-    const response = await fetch(
-      `https://codebuild.${AWS_REGION}.amazonaws.com/batch/start-build`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-amz-json-1.1',
-          'X-Amz-Target': 'CodeBuild_20161810.StartBuild',
-          'Authorization': buildAuthHeader(
-            AWS_ACCESS_KEY_ID,
-            AWS_SECRET_ACCESS_KEY,
-            payloadStr
-          ),
-        },
-        body: payloadStr,
+    if (!success) {
+      const errorMsg = new TextDecoder().decode(stderr);
+      console.error('AWS CLI error:', errorMsg);
+
+      // Provide fallback manual link
+      if (errorMsg.includes('NoCredentialsError') || errorMsg.includes('InvalidClientTokenId')) {
+        return Response.json(
+          {
+            status: 'error',
+            message: 'AWS credentials invalid',
+            details: 'Check AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are correct',
+            fallback_action: `Visit: https://console.aws.amazon.com/codesuite/codebuild/projects/${BUILD_PROJECT}`,
+          },
+          { status: 401 }
+        );
       }
-    );
 
-    if (!response.ok) {
-      const error = await response.text();
-      console.error('CodeBuild error:', error);
-      
-      // Fallback: provide direct AWS console link
-      return Response.json({
-        status: 'error',
-        message: 'CodeBuild API error',
-        error_details: error,
-        fallback_action: `Please manually start build at: https://console.aws.amazon.com/codesuite/codebuild/projects/${BUILD_PROJECT}`,
-        console_url: `https://console.aws.amazon.com/codesuite/codebuild/projects/${BUILD_PROJECT}`,
-      }, { status: 500 });
+      return Response.json(
+        {
+          status: 'error',
+          message: 'Failed to start CodeBuild',
+          details: errorMsg.slice(0, 300),
+          fallback_action: `Visit: https://console.aws.amazon.com/codesuite/codebuild/projects/${BUILD_PROJECT}`,
+        },
+        { status: 500 }
+      );
     }
 
-    const buildData = await response.json();
-    const buildId = buildData.build?.id;
-    const buildArn = buildData.build?.arn;
+    const output = JSON.parse(new TextDecoder().decode(stdout));
+    const buildId = output.build?.id;
+
+    if (!buildId) {
+      return Response.json(
+        {
+          status: 'error',
+          message: 'No build ID returned from AWS',
+        },
+        { status: 500 }
+      );
+    }
 
     return Response.json({
       status: 'success',
       message: 'CodeBuild triggered successfully',
       build: {
         id: buildId,
-        arn: buildArn,
         project: BUILD_PROJECT,
         status: 'queued',
         initiated_by: user.email,
@@ -162,25 +106,17 @@ Deno.serve(async (req) => {
       },
       monitoring: {
         console_url: `https://console.aws.amazon.com/codesuite/codebuild/projects/${BUILD_PROJECT}/history`,
-        build_url: `https://console.aws.amazon.com/codesuite/codebuild/projects/${BUILD_PROJECT}/build/${buildId}`,
+        build_log_url: `https://console.aws.amazon.com/codesuite/codebuild/projects/${BUILD_PROJECT}/history?builds=${buildId}`,
       },
     });
   } catch (error) {
-    console.error('triggerCodeBuild error:', error);
+    console.error('triggerCodeBuild error:', error.message);
     return Response.json(
       {
         status: 'error',
-        error: error.message,
-        message: 'Failed to trigger CodeBuild. Check AWS credentials and network connectivity.',
+        message: error.message || 'Failed to trigger CodeBuild',
       },
       { status: 500 }
     );
   }
 });
-
-// Simple auth header builder (simplified, for production use AWS SDK)
-function buildAuthHeader(keyId, secretKey, payload) {
-  // This is a placeholder — production code should use AWS SDK
-  // For now, return a basic structure
-  return `AWS4-HMAC-SHA256 Credential=${keyId}, SignedHeaders=host;x-amz-date, Signature=...`;
-}
