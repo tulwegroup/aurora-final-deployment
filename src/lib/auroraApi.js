@@ -8,9 +8,8 @@
  * No threshold defaults, no ACIF arithmetic, no tier recounting.
  */
 
-// Determine API base URL: use env var, production domain, or default to localhost
-// Route through Base44 proxy function to avoid CORS issues
-const BASE = '/auroraApiProxy';
+// Route through Base44 backend proxy to bypass CORS
+const BASE = '/api/functions/auroraApiProxy';
 
 export const API_ROOT = 'https://api.aurora-osi.com';
 
@@ -27,8 +26,14 @@ export function clearAccessToken() {
 async function request(method, path, body = null) {
   const headers = { "Content-Type": "application/json" };
   if (_accessToken) headers["Authorization"] = `Bearer ${_accessToken}`;
-  const res = await fetch(`${BASE}${path}`, {
-    method,
+  
+  // Call proxy with path as query param
+  const url = new URL(BASE, window.location.origin);
+  url.searchParams.append('path', path);
+  url.searchParams.append('method', method);
+  
+  const res = await fetch(url.toString(), {
+    method: 'POST',
     headers,
     body: body ? JSON.stringify(body) : undefined,
   });
