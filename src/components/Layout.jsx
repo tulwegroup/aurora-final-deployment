@@ -8,7 +8,7 @@
  */
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, History, Database, Box, Shield, LogOut, Loader2, ChevronRight, Map, Download, FileText, Globe, Workflow, FlaskConical, DollarSign, Cloud, Rocket } from "lucide-react";
+import { LayoutDashboard, History, Database, Box, Shield, LogOut, Loader2, ChevronRight, Map, Download, FileText, Globe, Workflow, FlaskConical, DollarSign, Cloud, Rocket, Terminal } from "lucide-react";
 import { auth, clearAccessToken } from "../lib/auroraApi";
 
 const NAV = [
@@ -27,6 +27,7 @@ const NAV = [
   { path: "/admin",       label: "Admin",        icon: Shield,  roles: ["admin"] },
   { path: "/deploy",      label: "AWS Deploy",   icon: Cloud,   roles: ["admin"] },
   { path: "/go-live",     label: "Go Live",      icon: Rocket,  roles: ["admin"] },
+  { path: "/api-console",  label: "API Console",   icon: Terminal, roles: ["admin"] },
 ];
 
 export default function Layout() {

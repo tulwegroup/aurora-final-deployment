@@ -12,14 +12,10 @@
 const BASE = (() => {
   const envUrl = import.meta.env.VITE_AURORA_API_URL;
   if (envUrl) return envUrl;
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname;
-    if (host === 'aurora-osi.io' || host === 'api.aurora-osi.io') {
-      return 'https://api.aurora-osi.io/api/v1';
-    }
-  }
-  return 'http://localhost:8000/api/v1';
+  return 'https://api.aurora-osi.com/api/v1';
 })();
+
+export const API_ROOT = 'https://api.aurora-osi.com';
 
 let _accessToken = null;
 
