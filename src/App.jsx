@@ -27,6 +27,7 @@ import GoLiveChecklist from './pages/GoLiveChecklist';
 import APITestConsole from './pages/APITestConsole';
 import DataRoom from './pages/DataRoom';
 import UICoverage from './pages/UICoverage';
+import IntelligenceDossier from './pages/IntelligenceDossier';
 // Add page imports here
 
 const AuthenticatedApp = () => {
@@ -68,6 +69,8 @@ const AuthenticatedApp = () => {
         <Route path="/map-export" element={<MapExport />} />
         <Route path="/reports/:scanId" element={<ReportViewer />} />
         <Route path="/reports" element={<ReportViewer />} />
+        <Route path="/dossier/:scanId" element={<IntelligenceDossier />} />
+        <Route path="/dossier" element={<IntelligenceDossier />} />
         <Route path="/portfolio" element={<PortfolioView />} />
         <Route path="/workflow" element={<ClientWorkflow />} />
         <Route path="/pilots" element={<PilotDashboard />} />
