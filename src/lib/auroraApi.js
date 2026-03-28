@@ -109,3 +109,69 @@ export const admin = {
   },
   bootstrapStatus: () => request("GET", "/admin/bootstrap-status"),
 };
+
+// AOI
+export const aoi = {
+  validate:   (geometry, maxAreaKm2)  => request("POST", "/aoi/validate", { geometry, max_area_km2: maxAreaKm2 }),
+  save:       (body)                  => request("POST", "/aoi", body),
+  get:        (aoiId)                 => request("GET",  `/aoi/${aoiId}`),
+  estimate:   (aoiId)                 => request("GET",  `/aoi/${aoiId}/estimate`),
+  submitScan: (aoiId, body)           => request("POST", `/aoi/${aoiId}/submit-scan`, body),
+  verify:     (aoiId)                 => request("GET",  `/aoi/${aoiId}/verify`),
+};
+
+// Map Exports
+export const mapExports = {
+  layers:   ()              => request("GET",  "/exports/layers"),
+  kml:      (scanId, body)  => request("POST", `/exports/${scanId}/kml`,     body),
+  kmz:      (scanId, body)  => request("POST", `/exports/${scanId}/kmz`,     body),
+  geojson:  (scanId, body)  => request("POST", `/exports/${scanId}/geojson`, body),
+};
+
+// Reports
+export const reports = {
+  generate: (scanId, audience) => request("POST", `/reports/${scanId}`, { audience }),
+  list:     (scanId)           => request("GET",  `/reports/${scanId}`),
+  get:      (scanId, reportId) => request("GET",  `/reports/${scanId}/${reportId}`),
+  audit:    (scanId, reportId) => request("GET",  `/reports/${scanId}/${reportId}/audit`),
+};
+
+// Portfolio
+export const portfolio = {
+  list:        (params = {})     => {
+    const q = new URLSearchParams(params).toString();
+    return request("GET", `/portfolio${q ? "?" + q : ""}`);
+  },
+  snapshot:    (params = {})     => {
+    const q = new URLSearchParams(params).toString();
+    return request("GET", `/portfolio/snapshot${q ? "?" + q : ""}`);
+  },
+  weightConfig: ()               => request("GET",  "/portfolio/weight-config"),
+  riskSummary:  (commodity)      => request("GET",  `/portfolio/risk-summary${commodity ? "?commodity=" + commodity : ""}`),
+  get:          (entryId)        => request("GET",  `/portfolio/${entryId}`),
+  assemble:     (body)           => request("POST", "/portfolio", body),
+};
+
+// Ground Truth Admin
+export const groundTruth = {
+  listRecords:    (params = {})        => {
+    const q = new URLSearchParams(params).toString();
+    return request("GET", `/gt/records${q ? "?" + q : ""}`);
+  },
+  getRecord:      (recordId)           => request("GET",  `/gt/records/${recordId}`),
+  submitRecord:   (body)               => request("POST", "/gt/records", body),
+  approveRecord:  (recordId, reason)   => request("POST", `/gt/records/${recordId}/approve`, { reason }),
+  rejectRecord:   (recordId, reason)   => request("POST", `/gt/records/${recordId}/reject`,  { reason }),
+  recordHistory:  (recordId)           => request("GET",  `/gt/records/${recordId}/history`),
+  auditLog:       ()                   => request("GET",  "/gt/audit"),
+  calVersions:    ()                   => request("GET",  "/gt/calibration/versions"),
+  activateCal:    (versionId)          => request("POST", `/gt/calibration/versions/${versionId}/activate`),
+  revokeCal:      (versionId, reason)  => request("POST", `/gt/calibration/versions/${versionId}/revoke`, { reason }),
+};
+
+// Canonical Export
+export const canonicalExport = {
+  json:    (scanId) => `${BASE}/export/${scanId}/json`,
+  geojson: (scanId) => `${BASE}/export/${scanId}/geojson`,
+  csv:     (scanId) => `${BASE}/export/${scanId}/csv`,
+};

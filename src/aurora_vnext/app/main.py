@@ -137,25 +137,46 @@ def create_application() -> FastAPI:
         )
 
     # -------------------------------------------------------------------------
-    # API routers — mounted as implementation phases complete
-    # Uncommented progressively per Phase D build order.
+    # API routers — all phases mounted
     # -------------------------------------------------------------------------
 
-    # Phase M — Scan execution and history APIs
-    # from app.api.scan import router as scan_router
-    # from app.api.history import router as history_router
-    # from app.api.datasets import router as datasets_router
-    # from app.api.twin import router as twin_router
-    # app.include_router(scan_router, prefix="/api/v1")
-    # app.include_router(history_router, prefix="/api/v1")
-    # app.include_router(datasets_router, prefix="/api/v1")
-    # app.include_router(twin_router, prefix="/api/v1")
+    # Phase M — Scan execution, history, datasets, digital twin
+    from app.api.scan import router as scan_router
+    from app.api.history import router as history_router
+    from app.api.datasets import router as datasets_router
+    from app.api.twin import router as twin_router
+    app.include_router(scan_router, prefix="/api/v1")
+    app.include_router(history_router, prefix="/api/v1")
+    app.include_router(datasets_router, prefix="/api/v1")
+    app.include_router(twin_router, prefix="/api/v1")
 
-    # Phase O — Auth and admin APIs
-    # from app.api.auth import router as auth_router
-    # from app.api.admin import router as admin_router
-    # app.include_router(auth_router, prefix="/api/v1")
-    # app.include_router(admin_router, prefix="/api/v1")
+    # Phase O — Auth and admin
+    from app.api.auth import router as auth_router
+    from app.api.admin import router as admin_router
+    app.include_router(auth_router, prefix="/api/v1")
+    app.include_router(admin_router, prefix="/api/v1")
+
+    # Phase AA — AOI management and map exports
+    from app.api.scan_aoi import router as aoi_router
+    from app.api.map_exports import router as map_exports_router
+    app.include_router(aoi_router)        # already has /api/v1/aoi prefix
+    app.include_router(map_exports_router)  # already has /api/v1/exports prefix
+
+    # Phase AB — Reports
+    from app.api.reports import router as reports_router
+    app.include_router(reports_router)    # already has /api/v1/reports prefix
+
+    # Phase AD — Portfolio
+    from app.api.portfolio import router as portfolio_router
+    app.include_router(portfolio_router)  # already has /api/v1/portfolio prefix
+
+    # Phase X — Canonical data export
+    from app.api.export import router as export_router
+    app.include_router(export_router)     # already has /api/v1/export prefix
+
+    # Phase Z — Ground truth admin
+    from app.api.ground_truth_admin import router as gt_router
+    app.include_router(gt_router)         # already has /api/v1/gt prefix
 
     return app
 

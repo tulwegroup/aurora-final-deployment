@@ -15,7 +15,7 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { useOutletContext } from "react-router-dom";
-import { base44 } from "@/api/base44Client";
+import { groundTruth } from "../lib/auroraApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -49,30 +49,47 @@ export default function GroundTruthAdmin() {
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      // Ground-truth backend functions (gtListRecords, gtListVersions, gtAuditLog)
-      // will be wired once the Aurora API Phase Z routers are mounted.
-      // For now, return empty arrays so the page renders without error.
-      setRecords([]);
-      setVersions([]);
-      setAuditLog([]);
+      const [recs, vers, audit] = await Promise.all([
+        groundTruth.listRecords(),
+        groundTruth.calVersions(),
+        actorRole === "admin" ? groundTruth.auditLog() : Promise.resolve([]),
+      ]);
+      setRecords(recs);
+      setVersions(vers);
+      setAuditLog(audit);
     } catch (e) {
       setError(e.message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [actorRole]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
   async function handleApprove(record_id) {
-    // Blocked: Aurora API Phase Z ground-truth router not yet mounted
-    // Action will be wired once POST /api/v1/ground-truth/approve is available
+    setActionLoading(true);
+    try {
+      await groundTruth.approveRecord(record_id, null);
+      setSelected(null);
+      await fetchAll();
+    } finally {
+      setActionLoading(false);
+    }
   }
 
   async function handleReject(record_id) {
-    // Blocked: Aurora API Phase Z ground-truth router not yet mounted
-    // Action will be wired once POST /api/v1/ground-truth/reject is available
+    setActionLoading(true);
+    try {
+      await groundTruth.rejectRecord(record_id, rejectReason);
+      setShowRejectModal(false);
+      setRejectReason("");
+      setSelected(null);
+      await fetchAll();
+    } finally {
+      setActionLoading(false);
+    }
   }
 
   const pending   = records.filter(r => r.status === "pending");
@@ -95,10 +112,7 @@ export default function GroundTruthAdmin() {
           Review, approve, and govern ground-truth calibration records.
         </p>
       </div>
-      <APIOffline
-        endpoint="GET /api/v1/ground-truth/records"
-        hint="Aurora API Phase Z ground-truth routers are not yet mounted in main.py. Records will appear here once the router is uncommented and the API is redeployed."
-      />
+
 
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4">
@@ -239,13 +253,23 @@ export default function GroundTruthAdmin() {
             <>
               <ProvenancePanel record={selected} />
               {selected.status === "pending" && actorRole === "admin" && (
-                <Card className="border-red-200 bg-red-50">
-                  <CardHeader className="pb-2"><CardTitle className="text-sm text-red-800">Actions Unavailable</CardTitle></CardHeader>
-                  <CardContent className="text-xs text-red-700 space-y-1">
-                    <p>Approve / Reject actions are blocked.</p>
-                    <p className="font-medium">Required: Mount Aurora API Phase Z ground-truth router in <code className="font-mono bg-red-100 px-1 rounded">main.py</code> and redeploy.</p>
-                  </CardContent>
-                </Card>
+                <div className="flex gap-2">
+                  <Button
+                    className="flex-1"
+                    onClick={() => handleApprove(selected.record_id)}
+                    disabled={actionLoading}
+                  >
+                    <CheckCircle className="w-4 h-4 mr-1" /> Approve
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    className="flex-1"
+                    onClick={() => setShowRejectModal(true)}
+                    disabled={actionLoading}
+                  >
+                    <XCircle className="w-4 h-4 mr-1" /> Reject
+                  </Button>
+                </div>
               )}
             </>
           ) : (
