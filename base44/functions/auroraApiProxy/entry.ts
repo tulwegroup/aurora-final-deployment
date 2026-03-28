@@ -4,7 +4,7 @@
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
-const AURORA_API = 'https://api.aurora-osi.com/api/v1';
+const AURORA_API = (Deno.env.get('AURORA_API_URL') || Deno.env.get('AURORA_DB_HOST') || 'http://localhost:8000') + '/api/v1';
 
 Deno.serve(async (req) => {
   try {
