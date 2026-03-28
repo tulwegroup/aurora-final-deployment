@@ -11,7 +11,7 @@ import { useEffect, useState } from "react";
 import {
   LayoutDashboard, History, Database, Box, Shield, LogOut, Loader2,
   ChevronRight, Map, Download, FileText, Globe, Workflow, FlaskConical,
-  DollarSign, Cloud, Rocket, Terminal, Lock, BarChart3
+  DollarSign, Cloud, Rocket, Terminal, Lock, BarChart3, ClipboardList
 } from "lucide-react";
 import { auth, clearAccessToken } from "../lib/auroraApi";
 
@@ -37,7 +37,7 @@ const NAV_SECTIONS = [
   {
     label: "Advanced",
     items: [
-      { path: "/twin",         label: "Digital Twin",    icon: Box,          roles: ["admin","operator","viewer"] },
+      { path: "/history",       label: "Digital Twin",    icon: Box,          roles: ["admin","operator","viewer"] },
       { path: "/ground-truth", label: "Ground Truth",    icon: Shield,       roles: ["admin","operator"] },
       { path: "/pilots",       label: "Pilots",          icon: FlaskConical, roles: ["admin","operator"] },
       { path: "/commercial",   label: "Commercial",      icon: DollarSign,   roles: ["admin"] },
@@ -50,7 +50,8 @@ const NAV_SECTIONS = [
       { path: "/deploy",     label: "AWS Deploy",    icon: Cloud,   roles: ["admin"] },
       { path: "/go-live",    label: "Go Live",       icon: Rocket,  roles: ["admin"] },
       { path: "/ops",        label: "Ops Monitor",   icon: Cloud,   roles: ["admin"] },
-      { path: "/api-console",label: "API Console",   icon: Terminal,roles: ["admin"] },
+      { path: "/api-console",label: "API Console",   icon: Terminal,      roles: ["admin"] },
+      { path: "/coverage",    label: "UI Coverage",   icon: ClipboardList,  roles: ["admin"] },
     ],
   },
 ];
