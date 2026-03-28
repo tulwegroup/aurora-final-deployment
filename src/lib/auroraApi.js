@@ -8,10 +8,10 @@
  * No threshold defaults, no ACIF arithmetic, no tier recounting.
  */
 
-// Route through Base44 backend proxy to bypass CORS
-const BASE = '/api/functions/auroraApiProxy';
+// Direct call to Aurora ALB — no proxy layer
+const BASE = 'https://aurora-alb-1663263128.us-east-1.elb.amazonaws.com/api/v1';
 
-export const API_ROOT = 'https://api.aurora-osi.com';
+export const API_ROOT = 'https://aurora-alb-1663263128.us-east-1.elb.amazonaws.com';
 
 let _accessToken = null;
 
@@ -27,18 +27,22 @@ async function request(method, path, body = null) {
   const headers = { "Content-Type": "application/json" };
   if (_accessToken) headers["Authorization"] = `Bearer ${_accessToken}`;
   
-  // Construct proxy URL with path as query param
-  const proxyUrl = `${BASE}?path=${encodeURIComponent(path)}&method=${encodeURIComponent(method)}`;
+  const url = `${BASE}${path}`;
+  console.log(`[Aurora] ${method} ${url}`);
   
-  const res = await fetch(proxyUrl, {
-    method: 'POST',
+  const res = await fetch(url, {
+    method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
   });
+  
+  console.log(`[Aurora] ${method} ${path} -> ${res.status}`);
+  
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
-    const error = new Error(err.detail || "Request failed");
+    const error = new Error(err.detail || `Request failed with ${res.status}`);
     error.status = res.status;
+    console.error(`[Aurora Error] ${method} ${path}:`, err);
     throw error;
   }
   return res.json();
