@@ -117,6 +117,9 @@ Deno.serve(async (req) => {
 
   const groundingHash = await computeHash(groundingBundle);
 
+  // Extract spatial context from payload if available
+  const spatialContext = payload.spatial_data || null;
+
   const groundingText = `
 === CANONICAL SCAN DATA (READ ONLY — DO NOT MODIFY OR RECOMPUTE) ===
 Scan ID:          ${scan_id}
@@ -143,6 +146,7 @@ Geophysical signature: ${mineral_system_logic.geophysical_signature}
 Uncertainty note: ${mineral_system_logic.uncertainty_note}
 Known false positives: ${mineral_system_logic.known_false_positives?.join("; ")}
 ${ground_truth_context ? `\n=== APPROVED GROUND TRUTH CONTEXT ===\n${JSON.stringify(ground_truth_context, null, 2)}` : ""}
+${spatialContext ? `\n=== SPATIAL DISTRIBUTION (FOR CONTEXT ONLY) ===\n${JSON.stringify(spatialContext, null, 2)}` : ""}
 `;
 
   // Generate all 4 sections
@@ -159,6 +163,13 @@ ${ground_truth_context ? `\n=== APPROVED GROUND TRUTH CONTEXT ===\n${JSON.string
   }
 
   const summary = `Aurora scan for ${commodity} (${scan_id.slice(0,8)}…) — status: ${system_status}. ACIF: ${acif_score ?? "—"}. ${cells_above_tier1} Tier 1 cells of ${total_cells} total.`;
+
+  // Prepare visual references (map URLs)
+  const visualReferences = {
+    aoi_map: `/map-export/${scan_id}?mode=aoi`,
+    anomaly_distribution: `/map-export/${scan_id}?mode=anomaly`,
+    tier_overlay: `/map-export/${scan_id}?mode=tiers`,
+  };
 
   return Response.json({
     report_id:  `rpt-${crypto.randomUUID()}`,
@@ -178,5 +189,7 @@ ${ground_truth_context ? `\n=== APPROVED GROUND TRUTH CONTEXT ===\n${JSON.string
       generated_by:                 user.email,
       llm_model_hint:               "aurora-interpretation-v1",
     },
+    visual_references: visualReferences,
+    spatial_data: spatialContext,
   });
 });
