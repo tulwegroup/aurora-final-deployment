@@ -27,12 +27,10 @@ async function request(method, path, body = null) {
   const headers = { "Content-Type": "application/json" };
   if (_accessToken) headers["Authorization"] = `Bearer ${_accessToken}`;
   
-  // Call proxy with path as query param
-  const url = new URL(BASE, window.location.origin);
-  url.searchParams.append('path', path);
-  url.searchParams.append('method', method);
+  // Construct proxy URL with path as query param
+  const proxyUrl = `${BASE}?path=${encodeURIComponent(path)}&method=${encodeURIComponent(method)}`;
   
-  const res = await fetch(url.toString(), {
+  const res = await fetch(proxyUrl, {
     method: 'POST',
     headers,
     body: body ? JSON.stringify(body) : undefined,

@@ -16,13 +16,9 @@ Deno.serve(async (req) => {
     }
 
     const url = new URL(req.url);
-    let path = url.pathname.replace('/auroraApiProxy', '');
-    // Remove duplicate /api/v1 if present in path
-    if (path.startsWith('/api/v1')) {
-      path = path.substring(7);
-    }
-    const query = url.search;
-    const method = req.method;
+    const path = url.searchParams.get('path') || url.pathname.replace('/auroraApiProxy', '');
+    const method = url.searchParams.get('method') || req.method;
+    const query = new URL(req.url).search.split('&').filter(p => !p.startsWith('path=') && !p.startsWith('method=')).join('&');
     const body = method !== 'GET' && method !== 'HEAD' ? await req.text() : null;
 
     const auroraUrl = `${AURORA_API}${path}${query}`;
@@ -39,9 +35,10 @@ Deno.serve(async (req) => {
 
     const responseBody = await auroraRes.text();
     
-    // Log error responses for debugging
+    // Log all responses for debugging
+    console.log(`Aurora API ${method} ${path} -> ${auroraRes.status}`);
     if (!auroraRes.ok) {
-      console.error(`Aurora API error ${auroraRes.status}:`, responseBody.substring(0, 500));
+      console.error(`Error response:`, responseBody.substring(0, 500));
     }
     
     // Return raw response
