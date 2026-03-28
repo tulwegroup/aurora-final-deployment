@@ -4,7 +4,10 @@
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
-const AURORA_API = (Deno.env.get('AURORA_API_URL') || Deno.env.get('AURORA_DB_HOST') || 'http://localhost:8000') + '/api/v1';
+let baseUrl = Deno.env.get('AURORA_API_URL') || Deno.env.get('AURORA_DB_HOST') || 'http://localhost:8000';
+if (!baseUrl.startsWith('http')) baseUrl = 'http://' + baseUrl;
+const AURORA_API = baseUrl.endsWith('/api/v1') ? baseUrl : baseUrl.replace(/\/api\/v1$/, '') + '/api/v1';
+console.log('[Proxy] Aurora API URL:', AURORA_API);
 
 Deno.serve(async (req) => {
   try {
