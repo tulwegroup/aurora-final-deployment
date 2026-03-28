@@ -1,11 +1,5 @@
 /**
  * Dashboard — Active scans overview + quick-action landing page
- * Phase P §P.2 (Refined)
- *
- * CONSTITUTIONAL RULES:
- *  - Renders active scan list from GET /scan/active (execution state only).
- *  - No score fields appear on this page (active scans have none).
- *  - No ACIF arithmetic, no tier threshold references.
  */
 import { useEffect, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
@@ -21,17 +15,17 @@ import {
 import APIOffline from "../components/APIOffline";
 
 const QUICK_ACTIONS = [
-  { to: "/workflow",   icon: Workflow,  label: "New Scan",     desc: "Submit a new AOI scan workflow" },
-  { to: "/history",    icon: History,   label: "Scan History", desc: "View completed canonical records" },
-  { to: "/portfolio",  icon: BarChart3, label: "Portfolio",    desc: "Territory-level intelligence" },
-  { to: "/reports",    icon: FileText,  label: "Reports",      desc: "Generate geological reports" },
-  { to: "/data-room",  icon: Lock,      label: "Data Room",    desc: "Secure access packages" },
-  { to: "/map-builder",icon: Map,       label: "Map Builder",  desc: "Draw AOI and initiate scan" },
+  { to: "/workflow",    icon: Workflow,  label: "New Scan",     desc: "Submit a new AOI scan workflow" },
+  { to: "/history",     icon: History,   label: "Scan History", desc: "View completed canonical records" },
+  { to: "/portfolio",   icon: BarChart3, label: "Portfolio",    desc: "Territory-level intelligence" },
+  { to: "/reports",     icon: FileText,  label: "Reports",      desc: "Generate geological reports" },
+  { to: "/data-room",   icon: Lock,      label: "Data Room",    desc: "Secure access packages" },
+  { to: "/map-builder", icon: Map,       label: "Map Builder",  desc: "Draw AOI and initiate scan" },
 ];
 
 export default function Dashboard() {
-  const { user }            = useOutletContext() || {};
-  const [active, setActive] = useState(null);
+  const { user }              = useOutletContext() || {};
+  const [active, setActive]   = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
 
@@ -74,7 +68,7 @@ export default function Dashboard() {
           {QUICK_ACTIONS.map(({ to, icon: Icon, label, desc }, i) => (
             <Link key={to} to={to}>
               <div className={`rounded-xl p-4 h-full transition-all cursor-pointer border hover:border-primary/40 hover:bg-muted/40 ${
-                i === 0 ? "bg-primary text-primary-foreground border-primary hover:border-primary hover:bg-primary/90 hover:text-primary-foreground" : ""
+                i === 0 ? "bg-primary text-primary-foreground border-primary" : ""
               }`}>
                 <Icon className="w-5 h-5 mb-2 opacity-80" />
                 <div className="font-semibold text-sm">{label}</div>
@@ -106,7 +100,7 @@ export default function Dashboard() {
 
         {!loading && active && (
           <>
-            {active.active_scans?.length === 0 ? (
+            {(!active.active_scans || active.active_scans.length === 0) ? (
               <Card>
                 <CardContent className="py-8 text-center text-muted-foreground text-sm space-y-2">
                   <div className="text-3xl">🛰</div>
@@ -147,7 +141,7 @@ export default function Dashboard() {
       </div>
 
       <p className="text-[11px] text-muted-foreground border-t pt-4">
-        Aurora OSI vNext · All displayed values sourced verbatim from canonical API records. No scientific computation in frontend.
+        Aurora OSI vNext · All displayed values sourced verbatim from canonical API records.
       </p>
     </div>
   );
