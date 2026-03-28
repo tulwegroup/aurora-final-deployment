@@ -4,7 +4,6 @@
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
-const BUILD_PROJECT = 'aurora-vnext-build';
 const AWS_REGION = 'us-east-1';
 
 Deno.serve(async (req) => {
@@ -20,12 +19,12 @@ Deno.serve(async (req) => {
       status: 'success',
       build: {
         id: 'manual-trigger-' + Date.now(),
-        project: BUILD_PROJECT,
+        project: 'aurora-vnext',
         initiated_by: user.email,
         initiated_at: new Date().toISOString(),
       },
       monitoring: {
-        console_url: `https://console.aws.amazon.com/codesuite/codebuild/projects/${BUILD_PROJECT}`,
+        console_url: `https://console.aws.amazon.com/codesuite/codebuild/${AWS_REGION}`,
       },
     });
   } catch (error) {
