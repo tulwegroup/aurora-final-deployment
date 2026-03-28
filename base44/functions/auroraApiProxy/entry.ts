@@ -8,12 +8,6 @@ const AURORA_API = (Deno.env.get('AURORA_API_URL') || Deno.env.get('AURORA_DB_HO
 
 Deno.serve(async (req) => {
   try {
-    const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-
-    if (!user) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    }
 
     const url = new URL(req.url);
     const path = url.searchParams.get('path') || url.pathname.replace('/auroraApiProxy', '');
@@ -26,6 +20,7 @@ Deno.serve(async (req) => {
     const headers = new Headers(req.headers);
     headers.delete('host');
     headers.delete('cookie');
+    headers.delete('origin');
 
     const auroraRes = await fetch(auroraUrl, {
       method,
