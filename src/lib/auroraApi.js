@@ -9,11 +9,8 @@
  */
 
 // Determine API base URL: use env var, production domain, or default to localhost
-const BASE = (() => {
-  const envUrl = import.meta.env.VITE_AURORA_API_URL;
-  if (envUrl) return envUrl;
-  return 'https://api.aurora-osi.com/api/v1';
-})();
+// Route through Base44 proxy function to avoid CORS issues
+const BASE = '/auroraApiProxy';
 
 export const API_ROOT = 'https://api.aurora-osi.com';
 
