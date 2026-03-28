@@ -175,3 +175,17 @@ export const canonicalExport = {
   geojson: (scanId) => `${BASE}/export/${scanId}/geojson`,
   csv:     (scanId) => `${BASE}/export/${scanId}/csv`,
 };
+
+// Data Room
+export const dataRoom = {
+  createPackage: (body)       => request("POST",   "/data-room/packages", body),
+  listPackages:  (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request("GET", `/data-room/packages${q ? "?" + q : ""}`);
+  },
+  getPackage:    (packageId)  => request("GET",    `/data-room/packages/${packageId}`),
+  listArtifacts: (packageId)  => request("GET",    `/data-room/packages/${packageId}/artifacts`),
+  createLink:    (packageId, body) => request("POST", `/data-room/packages/${packageId}/links`, body),
+  revokeLink:    (linkId)     => request("DELETE",  `/data-room/links/${linkId}`),
+  listLinks:     (packageId)  => request("GET",    `/data-room/links${packageId ? "?package_id=" + packageId : ""}`),
+};

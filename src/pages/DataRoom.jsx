@@ -10,14 +10,14 @@
  *   - Single-use and watermark flags stored at creation; not modifiable after.
  */
 import { useState, useEffect, useCallback } from "react";
-import { base44 } from "@/api/base44Client";
+import { dataRoom } from "../lib/auroraApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import {
   Lock, Package, Copy, Trash2, Plus, Loader2, CheckCircle,
-  Clock, Shield, AlertTriangle, ExternalLink, Hash, RefreshCw
+  Clock, Shield, ExternalLink, Hash, RefreshCw
 } from "lucide-react";
 import APIOffline from "../components/APIOffline";
 
@@ -134,15 +134,15 @@ function CreatePackageForm({ onCreated }) {
     setError(null);
     setCreated(null);
     try {
-      const res = await base44.functions.invoke("dataRoomCreate", {
+      const res = await dataRoom.createPackage({
         scan_id:    scanId.trim(),
         audience,
-        ttl_seconds: ttl,
+        ttl:        String(ttl),
         single_use: singleUse,
-        watermarked: watermark,
+        watermark:  watermark,
       });
-      setCreated(res.data);
-      if (onCreated) onCreated(res.data);
+      setCreated(res.package || res);
+      if (onCreated) onCreated(res);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -234,7 +234,7 @@ function CreatePackageForm({ onCreated }) {
         <APIOffline
           error={error}
           endpoint="POST /api/v1/data-room/packages"
-          hint="The data room backend function (dataRoomCreate) needs to be deployed and wired to the Aurora API."
+          onRetry={handleCreate}
         />
       )}
 
@@ -279,8 +279,8 @@ export default function DataRoom() {
     setLoading(true);
     setError(null);
     try {
-      const res = await base44.functions.invoke("dataRoomList", {});
-      setPackages(res.data);
+      const res = await dataRoom.listPackages();
+      setPackages(res);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -299,7 +299,10 @@ export default function DataRoom() {
   async function handleRevoke(packageId) {
     if (!confirm("Revoke this access package? The link will immediately stop working.")) return;
     try {
-      await base44.functions.invoke("dataRoomRevoke", { package_id: packageId });
+      // Get links for this package then revoke each active one
+      const linkRes = await dataRoom.listLinks(packageId);
+      const activeLinks = (linkRes.links || []).filter(l => l.status === "active");
+      await Promise.all(activeLinks.map(l => dataRoom.revokeLink(l.link_id)));
       await loadPackages();
     } catch (e) {
       alert("Revoke failed: " + e.message);
@@ -327,18 +330,7 @@ export default function DataRoom() {
         </Button>
       </div>
 
-      {/* Backend unavailable banner */}
-      <div className="flex items-start gap-2 text-xs bg-red-50 text-red-800 border border-red-200 rounded-lg px-4 py-3">
-        <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-red-600" />
-        <div>
-          <span className="font-semibold">Backend unavailable — read-only mode.</span>
-          {" "}Three backend functions must be deployed before this page is operational:
-          {" "}<code className="font-mono bg-red-100 px-1 rounded">dataRoomList</code>,
-          {" "}<code className="font-mono bg-red-100 px-1 rounded">dataRoomCreate</code>, and
-          {" "}<code className="font-mono bg-red-100 px-1 rounded">dataRoomRevoke</code>.
-          {" "}All interactions below will fail gracefully until these are deployed.
-        </div>
-      </div>
+
 
       {/* Security notice */}
       <div className="flex items-start gap-2 text-xs bg-blue-50 text-blue-800 border border-blue-200 rounded-lg px-4 py-2.5">
@@ -468,22 +460,7 @@ export default function DataRoom() {
         </TabsContent>
       </Tabs>
 
-      {/* Backend gap notice */}
-      <Card className="border-amber-200 bg-amber-50/50">
-        <CardContent className="py-3 px-4">
-          <div className="flex items-start gap-2 text-xs text-amber-900">
-            <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-600" />
-            <div>
-              <span className="font-medium">Backend dependency:</span> This page requires three backend functions to be deployed:
-              {" "}<code className="font-mono bg-amber-100 px-1 rounded">dataRoomList</code>,
-              {" "}<code className="font-mono bg-amber-100 px-1 rounded">dataRoomCreate</code>, and
-              {" "}<code className="font-mono bg-amber-100 px-1 rounded">dataRoomRevoke</code> —
-              wired to the Aurora API <code className="font-mono bg-amber-100 px-1 rounded">/api/v1/data-room/</code> router.
-              The UI will show graceful error states until they are deployed.
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+
     </div>
   );
 }

@@ -185,6 +185,10 @@ def create_application() -> FastAPI:
     from app.api.ground_truth_admin import router as gt_router
     app.include_router(gt_router)         # already has /api/v1/gt prefix
 
+    # Phase AH — Data Room package management
+    from app.api.data_room import router as data_room_router
+    app.include_router(data_room_router)  # already has /api/v1/data-room prefix
+
     return app
 
 

@@ -117,10 +117,10 @@ const MATRIX = [
   {
     id: "WF-09", phase: "AH", feature: "Step 4 — Data Room export package creation",
     persona: "Operator, Admin", route: "/workflow", component: "ExportStep",
-    endpoint: "buildDataRoom, revokeDeliveryLink backend functions", fields: "package_id, access_url, package_hash",
-    status: "BLOCKED",
-    gap: "ExportStep now renders explicit red banner explaining backend dependency. Demo mode (Ghana Gold) works fully. Live mode shows unavailable state. No dead-end button.",
-    action: "Deploy buildDataRoom and revokeDeliveryLink backend functions",
+    endpoint: "POST /api/v1/data-room/packages", fields: "package_id, access_url, package_hash, artifacts[]",
+    status: "IMPLEMENTED",
+    gap: "Wired to Aurora-native /api/v1/data-room/packages endpoint. Blocked banner removed.",
+    action: "",
   },
   {
     id: "WF-10", phase: "AI", feature: "Demo mode — Ghana Gold end-to-end (no backend)",
@@ -277,36 +277,36 @@ const MATRIX = [
   {
     id: "GT-01", phase: "Z §Z.4", feature: "Ground truth record list (pending / approved / rejected tabs)",
     persona: "Admin, Operator", route: "/ground-truth", component: "GroundTruthAdmin",
-    endpoint: "GET /api/v1/ground-truth/records", fields: "record_id, status, commodity, source_type",
-    status: "BLOCKED",
-    gap: "Aurora API Phase Z ground-truth routers not mounted in main.py. UI renders APIOffline banner + empty tabs. No silent failure.",
-    action: "Mount ground_truth_admin.py router in Aurora main.py and redeploy API",
+    endpoint: "GET /api/v1/gt/records", fields: "record_id, status, commodity, source_type",
+    status: "IMPLEMENTED",
+    gap: "Router mounted in main.py. GroundTruthAdmin now calls live Aurora API.",
+    action: "",
   },
   {
     id: "GT-02", phase: "Z §Z.4", feature: "Approve / reject with mandatory reason",
     persona: "Admin", route: "/ground-truth", component: "GroundTruthAdmin",
-    endpoint: "POST /api/v1/ground-truth/approve, /reject", fields: "record_id, reason",
-    status: "BLOCKED",
-    gap: "Action buttons replaced with explicit 'Actions Unavailable' card explaining required backend action. No dead-end alert().",
-    action: "Same as GT-01",
+    endpoint: "POST /api/v1/gt/records/{id}/approve, /reject", fields: "record_id, reason",
+    status: "IMPLEMENTED",
+    gap: "Approve/Reject buttons wired to live Aurora API. Blocked state removed.",
+    action: "",
   },
   {
     id: "GT-03", phase: "Z §Z.4", feature: "Calibration version lineage view",
     persona: "Admin", route: "/ground-truth", component: "GroundTruthAdmin",
-    endpoint: "GET /api/v1/ground-truth/versions", fields: "version_id, parent_version_id, calibration_effect_flags",
-    status: "BLOCKED", gap: "Tab renders empty state. APIOffline banner shown at page top.", action: "Same as GT-01",
+    endpoint: "GET /api/v1/gt/calibration/versions", fields: "version_id, parent_version_id, calibration_effect_flags",
+    status: "IMPLEMENTED", gap: "Router mounted. Tab calls live API.", action: "",
   },
   {
     id: "GT-04", phase: "Z §Z.4", feature: "Provenance detail panel",
     persona: "Admin, Operator", route: "/ground-truth", component: "ProvenancePanel",
-    endpoint: "GET /api/v1/ground-truth/records/{id}", fields: "source_doc_ref, confidence, methodology",
-    status: "BLOCKED", gap: "Panel shows 'Select a record' placeholder until records load.", action: "Same as GT-01",
+    endpoint: "GET /api/v1/gt/records/{id}", fields: "source_doc_ref, confidence, methodology",
+    status: "IMPLEMENTED", gap: "Panel populates from live API records.", action: "",
   },
   {
     id: "GT-05", phase: "Z §Z.4", feature: "Ground truth audit log",
     persona: "Admin", route: "/ground-truth", component: "GroundTruthAdmin",
-    endpoint: "GET /api/v1/ground-truth/audit", fields: "actor_id, action, occurred_at, from_status, to_status, reason",
-    status: "BLOCKED", gap: "Audit tab renders empty table with 'No audit entries yet' message. No silent failure.", action: "Same as GT-01",
+    endpoint: "GET /api/v1/gt/audit", fields: "actor_id, action, occurred_at, from_status, to_status, reason",
+    status: "IMPLEMENTED", gap: "Audit tab calls live Aurora API audit endpoint.", action: "",
   },
 
   // ─── Portfolio ───────────────────────────────────────────────────
@@ -454,10 +454,19 @@ export default function UICoverage() {
           Master compliance audit against all approved Aurora OSI phases.
           {" "}{IMPLEMENTED_ITEMS.length} implemented · {PARTIAL_ITEMS.length} partial · {BLOCKED_ITEMS.length} backend-blocked.
         </p>
-        <div className="inline-flex items-center gap-2 mt-2 px-3 py-1.5 rounded border border-amber-300 bg-amber-50 text-amber-900 text-xs font-medium">
-          <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-          UI STATUS: <strong>COMPLETE EXCEPT BACKEND-BLOCKED ITEMS</strong>
-          {" — "}{BLOCKED_ITEMS.length} features have production-safe unavailable states but require backend deployment to activate.
+        <div className={`inline-flex items-center gap-2 mt-2 px-3 py-1.5 rounded border text-xs font-medium ${
+          BLOCKED_ITEMS.length === 0
+            ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+            : "border-amber-300 bg-amber-50 text-amber-900"
+        }`}>
+          {BLOCKED_ITEMS.length === 0
+            ? <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+            : <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+          }
+          {BLOCKED_ITEMS.length === 0
+            ? <><strong>UI STATUS: FULLY COMPLETE</strong> — All features activated. Zero blocked items remain.</>  
+            : <><strong>UI STATUS: COMPLETE EXCEPT BACKEND-BLOCKED ITEMS</strong>{" — "}{BLOCKED_ITEMS.length} features require backend deployment to activate.</>  
+          }
         </div>
       </div>
 
@@ -483,9 +492,7 @@ export default function UICoverage() {
           <TabsTrigger value="matrix">Full Matrix ({MATRIX.length})</TabsTrigger>
           <TabsTrigger value="blocked">Blocked ({BLOCKED_ITEMS.length})</TabsTrigger>
           <TabsTrigger value="routes">Routes</TabsTrigger>
-          <TabsTrigger value="blocked">Blocked ({BLOCKED_ITEMS.length})</TabsTrigger>
-        <TabsTrigger value="routes">Routes</TabsTrigger>
-        <TabsTrigger value="constitutional">Constitutional Proof</TabsTrigger>
+          <TabsTrigger value="constitutional">Constitutional Proof</TabsTrigger>
         </TabsList>
 
         {/* Full matrix */}
@@ -597,11 +604,11 @@ export default function UICoverage() {
                     { route: "/reports/:scanId",    page: "ReportViewer",      roles: "All",            states: "Config panel, Loading (LLM), Error, Report sections, Audit",   backend: "generateGeologicalReport function" },
                     { route: "/reports",            page: "ReportViewer",      roles: "All",            states: "Same as above (demo scan ID used)",                             backend: "generateGeologicalReport function" },
                     { route: "/portfolio",          page: "PortfolioView",     roles: "All",            states: "Loading, Error, Filters, Summary, Territory ranking/cards",    backend: "portfolioSnapshot function" },
-                    { route: "/data-room",          page: "DataRoom",          roles: "All",            states: "Loading, Error (APIOffline), Packages list, Create form",       backend: "dataRoomList, dataRoomCreate, dataRoomRevoke (BLOCKED)" },
+                    { route: "/data-room",          page: "DataRoom",          roles: "All",            states: "Loading, Error (APIOffline), Packages list, Create form",       backend: "GET|POST /api/v1/data-room/packages, DELETE /api/v1/data-room/links/{id}" },
                     { route: "/map-builder",        page: "MapScanBuilder",    roles: "Admin, Operator", states: "4-step: Draw → Validate → Preview → Submit",                 backend: "aoiValidate, aoiSave, aoiEstimate, aoiSubmitScan" },
                     { route: "/map-export/:scanId", page: "MapExport",         roles: "All",            states: "Layer select, Format select, Export, Hash verification",       backend: "mapExport function" },
                     { route: "/map-export",         page: "MapExport",         roles: "All",            states: "Same (no pre-selected scan)",                                   backend: "mapExport function" },
-                    { route: "/ground-truth",       page: "GroundTruthAdmin",  roles: "Admin, Operator", states: "Loading, Error (APIOffline), Tabs, Provenance panel, Modals",backend: "BLOCKED: Phase Z router not mounted" },
+                    { route: "/ground-truth",       page: "GroundTruthAdmin",  roles: "Admin, Operator", states: "Loading, Records tabs, Approve/Reject, Calibration, Audit",    backend: "GET /api/v1/gt/records, /calibration/versions, /audit" },
                     { route: "/admin",              page: "AdminPanel",        roles: "Admin only",     states: "Loading, Error, User list, Role change modal, Audit log",      backend: "GET /admin/users, /audit" },
                     { route: "/pilots",             page: "PilotDashboard",    roles: "Admin",          states: "Pilot cards, feedback capture",                                 backend: "None (static)" },
                     { route: "/commercial",         page: "CommercialPackaging",roles: "Admin",         states: "Pricing tiers, proposal builder",                               backend: "None (static)" },
@@ -661,7 +668,7 @@ export default function UICoverage() {
                 ["Results Viewing", "ScanResultsView polls getScanStatus every 4s → status/tier_counts/acif_mean rendered verbatim"],
                 ["Report Viewing", "ReportViewer → audience + commodity → generateGeologicalReport (LLM backend) → sections + audit trail"],
                 ["Digital Twin", "TwinView → GET /twin/{id} → VoxelRenderer (Three.js) → version selection → snapshot export"],
-                ["Data Room Package", "DataRoom → CreatePackageForm → dataRoomCreate → package_id + access_url (BLOCKED pending backend)"],
+                ["Data Room Package", "DataRoom → CreatePackageForm → POST /api/v1/data-room/packages → package_id + package_hash + access_url + artifact hashes"],
                 ["Portfolio", "PortfolioView → portfolioSnapshot → territories + EPI + risk tier displayed verbatim"],
                 ["Admin Flow", "AdminPanel (admin role only) → listUsers → promptRoleChange → mandatory reason modal → updateRole → audit log"],
               ].map(([flow, desc]) => (

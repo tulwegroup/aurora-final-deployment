@@ -10,7 +10,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Shield, Link, Copy, CheckCircle, RotateCcw, Lock, AlertTriangle } from "lucide-react";
-import { base44 } from "@/api/base44Client";
+import { dataRoom } from "../../lib/auroraApi";
 import { GHANA_PACKAGE, GHANA_DELIVERY_LINK } from "../../lib/demoData";
 
 const ARTIFACT_LABELS = {
@@ -53,14 +53,14 @@ export default function ExportStep({ scanId, onRestart, demoMode }) {
       return;
     }
     try {
-      const res = await base44.functions.invoke("buildDataRoom", {
+      const res = await dataRoom.createPackage({
         scan_id:    scanId,
         ttl:        ttl,
         single_use: singleUse,
         watermark:  watermark,
       });
-      setPkg(res.data.package);
-      setLink(res.data.link);
+      setPkg(res.package);
+      setLink(res.link);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -72,7 +72,7 @@ export default function ExportStep({ scanId, onRestart, demoMode }) {
     if (!link) return;
     setRevoking(true);
     try {
-      await base44.functions.invoke("revokeDeliveryLink", { link_id: link.link_id });
+      await dataRoom.revokeLink(link.link_id);
       setRevoked(true);
     } catch (e) {
       setError(e.message);
@@ -91,19 +91,7 @@ export default function ExportStep({ scanId, onRestart, demoMode }) {
 
   return (
     <div className="space-y-4">
-      {/* Blocked state banner — only when not in demo mode */}
-      {!demoMode && (
-        <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm">
-          <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-          <div className="text-red-800">
-            <span className="font-semibold">Export unavailable — backend not deployed.</span>
-            {" "}The <code className="font-mono bg-red-100 px-1 rounded text-xs">buildDataRoom</code> and
-            {" "}<code className="font-mono bg-red-100 px-1 rounded text-xs">revokeDeliveryLink</code> backend functions
-            are not yet deployed. Package creation will fail until these are wired to the Aurora API data room router.
-            {" "}Demo mode shows the expected output.
-          </div>
-        </div>
-      )}
+
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Config */}
       <div className="space-y-4">
@@ -225,9 +213,9 @@ export default function ExportStep({ scanId, onRestart, demoMode }) {
         )}
 
         {!pkg && !building && (
-          <Card>
-            <CardContent className="py-12 text-center text-muted-foreground text-sm">
-              {demoMode ? "Configure delivery options and build the package." : "Package creation is unavailable until backend functions are deployed."}
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground text-sm">
+            {"Configure delivery options and build the package."}
             </CardContent>
           </Card>
         )}
