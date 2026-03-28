@@ -28,6 +28,8 @@ import APITestConsole from './pages/APITestConsole';
 import DataRoom from './pages/DataRoom';
 import UICoverage from './pages/UICoverage';
 import IntelligenceDossier from './pages/IntelligenceDossier';
+import InvestorDossier from './pages/InvestorDossier';
+import LiveScanConsole from './pages/LiveScanConsole';
 // Add page imports here
 
 const AuthenticatedApp = () => {
@@ -71,6 +73,8 @@ const AuthenticatedApp = () => {
         <Route path="/reports" element={<ReportViewer />} />
         <Route path="/dossier/:scanId" element={<IntelligenceDossier />} />
         <Route path="/dossier" element={<IntelligenceDossier />} />
+        <Route path="/investor-dossier/:scanId" element={<InvestorDossier />} />
+        <Route path="/investor-dossier" element={<InvestorDossier />} />
         <Route path="/portfolio" element={<PortfolioView />} />
         <Route path="/workflow" element={<ClientWorkflow />} />
         <Route path="/pilots" element={<PilotDashboard />} />
@@ -82,6 +86,7 @@ const AuthenticatedApp = () => {
         <Route path="/api-console" element={<APITestConsole />} />
         <Route path="/data-room" element={<DataRoom />} />
         <Route path="/coverage" element={<UICoverage />} />
+        <Route path="/live-scan" element={<LiveScanConsole />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
