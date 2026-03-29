@@ -1,0 +1,66 @@
+{
+  "name": "ScanJob",
+  "type": "object",
+  "properties": {
+    "scan_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "running",
+        "completed",
+        "failed"
+      ],
+      "default": "queued"
+    },
+    "commodity": {
+      "type": "string"
+    },
+    "resolution": {
+      "type": "string"
+    },
+    "aoi_id": {
+      "type": "string"
+    },
+    "geometry": {
+      "type": "object"
+    },
+    "geometry_hash": {
+      "type": "string"
+    },
+    "cell_count": {
+      "type": "number"
+    },
+    "completed_at": {
+      "type": "string"
+    },
+    "error_message": {
+      "type": "string"
+    },
+    "tier_1_count": {
+      "type": "number"
+    },
+    "tier_2_count": {
+      "type": "number"
+    },
+    "tier_3_count": {
+      "type": "number"
+    },
+    "display_acif_score": {
+      "type": "number"
+    },
+    "results_geojson": {
+      "type": "object"
+    },
+    "pipeline_version": {
+      "type": "string",
+      "default": "vnext-1.0"
+    }
+  },
+  "required": [
+    "commodity",
+    "geometry"
+  ]
+}

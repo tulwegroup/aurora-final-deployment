@@ -7,9 +7,9 @@
  *   - Captures and reports geometry only. No scoring/computation.
  *   - Geometry passed verbatim to parent — no modification.
  */
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Upload, Square, AlertTriangle, MapPin } from "lucide-react";
+import { Upload, Square, AlertTriangle, Hexagon } from "lucide-react";
 
 // Parse KML into GeoJSON polygon geometry
 function parseKML(text) {
@@ -84,92 +84,141 @@ function BBoxInput({ onGeometryReady, defaultBbox }) {
   );
 }
 
-// Leaflet map component — loaded lazily so it doesn't crash if CSS not ready
+// Leaflet map component
 function LeafletMap({ onGeometryReady, center = [7, -1.5] }) {
   const mapRef = useRef(null);
   const leafletRef = useRef(null);
-  const [drawing, setDrawing] = useState(false);
-  const [points, setPoints] = useState([]);
-  const [rect, setRect] = useState(null);
-  const [mode, setMode] = useState("rectangle"); // "rectangle" | "polygon"
+  const [drawMode, setDrawMode] = useState(null);
+  const [polyCount, setPolyCount] = useState(0);
+  const polyPtsRef = useRef([]);
 
   useEffect(() => {
     if (leafletRef.current || !mapRef.current) return;
-    // Dynamically import leaflet
     import("leaflet").then(L => {
-      // Ensure default icon works
       delete L.Icon.Default.prototype._getIconUrl;
       L.Icon.Default.mergeOptions({
         iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
         iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
         shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
       });
-
       const map = L.map(mapRef.current).setView(center, 5);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "© OpenStreetMap contributors",
-        maxZoom: 18,
+        attribution: "© OpenStreetMap contributors", maxZoom: 18,
       }).addTo(map);
 
-      leafletRef.current = { L, map, layers: [] };
+      leafletRef.current = { L, map, _rectMode: false, _polyMode: false };
 
-      // Rectangle draw via drag
-      let startLatLng = null;
-      let rectLayer = null;
-
-      map.on("mousedown", (e) => {
+      // ---- RECTANGLE ----
+      let startLL = null, rectLayer = null;
+      map.on("mousedown", e => {
         if (!leafletRef.current._rectMode) return;
-        map.dragging.disable();
-        startLatLng = e.latlng;
+        map.dragging.disable(); startLL = e.latlng;
         if (rectLayer) { map.removeLayer(rectLayer); rectLayer = null; }
       });
-
-      map.on("mousemove", (e) => {
-        if (!startLatLng || !leafletRef.current._rectMode) return;
+      map.on("mousemove", e => {
+        if (!startLL || !leafletRef.current._rectMode) return;
         if (rectLayer) map.removeLayer(rectLayer);
-        rectLayer = L.rectangle([startLatLng, e.latlng], {
-          color: "#3b82f6", fillOpacity: 0.2, weight: 2
-        }).addTo(map);
+        rectLayer = L.rectangle([startLL, e.latlng], { color: "#3b82f6", fillOpacity: 0.2, weight: 2 }).addTo(map);
       });
-
-      map.on("mouseup", (e) => {
-        if (!startLatLng || !leafletRef.current._rectMode) return;
+      map.on("mouseup", e => {
+        if (!startLL || !leafletRef.current._rectMode) return;
         map.dragging.enable();
-        if (!rectLayer) { startLatLng = null; return; }
+        if (!rectLayer) { startLL = null; return; }
         const b = rectLayer.getBounds();
         const sw = b.getSouthWest(), ne = b.getNorthEast();
-        const coords = [
-          [sw.lng, sw.lat], [ne.lng, sw.lat],
-          [ne.lng, ne.lat], [sw.lng, ne.lat], [sw.lng, sw.lat]
-        ];
+        const coords = [[sw.lng,sw.lat],[ne.lng,sw.lat],[ne.lng,ne.lat],[sw.lng,ne.lat],[sw.lng,sw.lat]];
         onGeometryReady({ type: "Polygon", coordinates: [coords] });
-        startLatLng = null;
+        startLL = null;
         leafletRef.current._rectMode = false;
-        leafletRef.current.map.getContainer().style.cursor = "";
+        map.getContainer().style.cursor = "";
+      });
+
+      // ---- POLYGON ----
+      let polyMarkers = [], polyLine = null, previewLine = null;
+      function onPolyMove(e) {
+        const pts = polyPtsRef.current;
+        if (!leafletRef.current._polyMode || pts.length === 0) return;
+        const last = pts[pts.length - 1];
+        if (previewLine) map.removeLayer(previewLine);
+        previewLine = L.polyline([[last[1],last[0]], [e.latlng.lat,e.latlng.lng]],
+          { color: '#3b82f6', dashArray: '4 4', weight: 1.5 }).addTo(map);
+      }
+      function finishPoly() {
+        const pts = polyPtsRef.current;
+        if (pts.length < 3) return;
+        polyMarkers.forEach(m => map.removeLayer(m)); polyMarkers = [];
+        if (polyLine) { map.removeLayer(polyLine); polyLine = null; }
+        if (previewLine) { map.removeLayer(previewLine); previewLine = null; }
+        map.off('mousemove', onPolyMove);
+        const ring = [...pts, pts[0]];
+        polyPtsRef.current = [];
+        setPolyCount(0);
+        leafletRef.current._polyMode = false;
+        map.getContainer().style.cursor = '';
+        onGeometryReady({ type: 'Polygon', coordinates: [ring] });
+      }
+      leafletRef.current._finishPoly = finishPoly;
+      map.on('click', e => {
+        if (!leafletRef.current._polyMode) return;
+        const pt = [e.latlng.lng, e.latlng.lat];
+        polyPtsRef.current = [...polyPtsRef.current, pt];
+        setPolyCount(polyPtsRef.current.length);
+        const m = L.circleMarker([e.latlng.lat, e.latlng.lng],
+          { radius: 5, color: '#3b82f6', fillOpacity: 1 }).addTo(map);
+        polyMarkers.push(m);
+        if (polyLine) map.removeLayer(polyLine);
+        if (polyPtsRef.current.length > 1)
+          polyLine = L.polyline(polyPtsRef.current.map(p=>[p[1],p[0]]), { color:'#3b82f6', weight:2 }).addTo(map);
+        map.on('mousemove', onPolyMove);
+      });
+      map.on('dblclick', e => {
+        if (!leafletRef.current._polyMode) return;
+        L.DomEvent.stop(e);
+        finishPoly();
       });
     });
-
     return () => {
-      if (leafletRef.current?.map) {
-        leafletRef.current.map.remove();
-        leafletRef.current = null;
-      }
+      if (leafletRef.current?.map) { leafletRef.current.map.remove(); leafletRef.current = null; }
     };
   }, []);
 
   function startRectDraw() {
     if (!leafletRef.current) return;
     leafletRef.current._rectMode = true;
-    leafletRef.current.map.getContainer().style.cursor = "crosshair";
+    leafletRef.current._polyMode = false;
+    leafletRef.current.map.getContainer().style.cursor = 'crosshair';
+    setDrawMode('rectangle'); polyPtsRef.current = []; setPolyCount(0);
+  }
+  function startPolyDraw() {
+    if (!leafletRef.current) return;
+    leafletRef.current._polyMode = true;
+    leafletRef.current._rectMode = false;
+    leafletRef.current.map.getContainer().style.cursor = 'crosshair';
+    setDrawMode('polygon'); polyPtsRef.current = []; setPolyCount(0);
+  }
+  function finishPolyBtn() {
+    if (leafletRef.current?._finishPoly) leafletRef.current._finishPoly();
+    setDrawMode(null);
   }
 
   return (
     <div className="space-y-2">
-      <div className="flex gap-2">
-        <Button size="sm" variant="outline" onClick={startRectDraw}>
+      <div className="flex flex-wrap gap-2 items-center">
+        <Button size="sm" variant={drawMode === 'rectangle' ? 'default' : 'outline'} onClick={startRectDraw}>
           <Square className="w-3.5 h-3.5 mr-1" /> Draw Rectangle
         </Button>
-        <span className="text-xs text-muted-foreground self-center">Click and drag to draw AOI rectangle</span>
+        <Button size="sm" variant={drawMode === 'polygon' ? 'default' : 'outline'} onClick={startPolyDraw}>
+          <Hexagon className="w-3.5 h-3.5 mr-1" /> Draw Polygon
+        </Button>
+        {drawMode === 'polygon' && polyCount >= 3 && (
+          <Button size="sm" variant="secondary" onClick={finishPolyBtn}>
+            Finish ({polyCount} pts)
+          </Button>
+        )}
+        <span className="text-xs text-muted-foreground">
+          {drawMode === 'rectangle' ? 'Click and drag to draw rectangle' :
+           drawMode === 'polygon' ? 'Click to add points · double-click or Finish to close' : ''}
+        </span>
       </div>
       <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
       <div ref={mapRef} className="w-full rounded-lg border bg-muted/20" style={{ height: 420 }} />

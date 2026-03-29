@@ -16,7 +16,9 @@
  *   - aoi_id + geometry_hash carried through to scan reference.
  */
 import { useState, useCallback } from "react";
-import { aoi as aoiApi, scans } from "../lib/auroraApi";
+import { useNavigate } from "react-router-dom";
+import { aoi as aoiApi } from "../lib/auroraApi";
+import { base44 } from '@/api/base44Client';
 import MapDrawTool from "../components/MapDrawTool";
 import AOIPreviewPanel from "../components/AOIPreviewPanel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,6 +45,7 @@ const RESOLUTION_OPTIONS = [
 const STEPS = ["Draw AOI", "Validate", "Preview", "Submit"];
 
 export default function MapScanBuilder() {
+  const navigate = useNavigate();
   const [step, setStep]               = useState(0);
   const [geometry, setGeometry]       = useState(null);
   const [validation, setValidation]   = useState(null);
@@ -102,12 +105,17 @@ export default function MapScanBuilder() {
   }
 
   async function submitScan() {
-    if (!savedAOI || !geometry) return;
+    if (!geometry) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await scans.submitPolygon({ geometry, commodity, resolution, aoi_id: savedAOI.aoi_id });
-      setSubmitted(res);
+      const res = await base44.functions.invoke('runAuroraScan', {
+        geometry,
+        commodity,
+        resolution,
+        aoi_id: savedAOI?.aoi_id || null,
+      });
+      setSubmitted(res.data);
       setStep(3);
     } catch (e) {
       setError(e.message);
@@ -268,7 +276,7 @@ export default function MapScanBuilder() {
             <Card>
               <CardContent className="py-4 space-y-2">
                 <div className="flex items-center gap-2 text-emerald-700 font-medium">
-                  <CheckCircle className="w-5 h-5" /> Scan Queued
+                  <CheckCircle className="w-5 h-5" /> Scan Complete
                 </div>
                 <div className="space-y-1 text-xs">
                   <div className="flex justify-between">
