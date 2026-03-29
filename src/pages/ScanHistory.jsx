@@ -30,7 +30,7 @@ export default function ScanHistory() {
     setError(null);
     try {
       const response = await base44.functions.invoke('auroraProxy', {
-        endpoint: '/api/v1/history',
+        path: '/api/v1/history',
         method: 'GET',
       });
       setScans(response.data?.scans || []);
