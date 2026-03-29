@@ -6,7 +6,13 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
 const AURORA_BASE = (Deno.env.get('AURORA_BACKEND_URL') || '').trim() || 'https://api.aurora-osi.com';
-const normalizedBase = AURORA_BASE.replace(/\/$/, ''); // Remove trailing slash
+const normalizedBase = (() => {
+  let url = AURORA_BASE.replace(/\/$/, ''); // Remove trailing slash
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    url = `https://${url}`; // Add protocol if missing
+  }
+  return url;
+})();
 
 Deno.serve(async (req) => {
   const base44 = createClientFromRequest(req);
@@ -15,7 +21,7 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => ({}));
   const { method = 'GET', path = '/', payload = null, token = null } = body;
 
-  const url = `${normalizedBase}${path}`; // Use normalized base
+  const url = `${normalizedBase}${path}`;
 
   const headers = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -38,8 +44,6 @@ Deno.serve(async (req) => {
   }
 
   console.log(`[auroraProxy] Response: ${res.status}`);
-  // Always return HTTP 200 so the browser fetch succeeds;
-  // callers read `ok` and `status` from the JSON body.
   return Response.json(
     { data, status: res.status, ok: res.ok },
     { status: 200 }
