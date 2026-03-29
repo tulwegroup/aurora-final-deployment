@@ -69,8 +69,9 @@ function bbox(coords) {
 }
 
 function resolutionDeg(resolution) {
-  const map = { fine: 0.1, medium: 0.25, coarse: 0.5, survey: 1.0 };
-  return map[resolution] || 0.25;
+  // Degrees per cell: fine ~1km, medium ~5km, coarse ~10km, survey ~25km
+  const map = { fine: 0.01, medium: 0.05, coarse: 0.1, survey: 0.25 };
+  return map[resolution] || 0.05;
 }
 
 function tileBBox(bb, stepDeg) {

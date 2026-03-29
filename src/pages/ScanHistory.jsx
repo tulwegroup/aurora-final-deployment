@@ -98,7 +98,7 @@ export default function ScanHistory() {
                   <div className="text-xs text-muted-foreground whitespace-nowrap">
                     {scan.completed_at ? new Date(scan.completed_at).toLocaleDateString() : scan.created_date ? new Date(scan.created_date).toLocaleDateString() : '—'}
                   </div>
-                  <Link to={`/history/${scan.scan_id || scan.id}`}>
+                  <Link to={`/history/${scan.scan_id}`}>
                     <Button variant="ghost" size="sm"><ArrowRight className="w-4 h-4" /></Button>
                   </Link>
                 </CardContent>
