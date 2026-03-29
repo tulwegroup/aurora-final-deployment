@@ -13,8 +13,9 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'geometry required' }, { status: 400 });
     }
 
-    // Use the same backend as auroraProxy
-    const auroraBackendUrl = 'https://api.aurora-osi.com';
+    // Get Aurora backend URL from environment with fallback
+    const auroraBackendUrl = (Deno.env.get('AURORA_BACKEND_URL') || '').trim() || 'https://api.aurora-osi.com';
+    const normalizedUrl = auroraBackendUrl.replace(/\/$/, '');
 
     // Construct the scan request payload for Aurora backend
     const scanRequest = {
@@ -28,7 +29,8 @@ Deno.serve(async (req) => {
     };
 
     // Call Aurora backend /api/v1/scan/polygon endpoint
-    const response = await fetch(`${auroraBackendUrl}/api/v1/scan/polygon`, {
+    console.log(`[runAuroraScan] Submitting to ${normalizedUrl}/api/v1/scan/polygon`);
+    const response = await fetch(`${normalizedUrl}/api/v1/scan/polygon`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -42,7 +44,7 @@ Deno.serve(async (req) => {
       console.error('[SCAN-BACKEND-ERROR]', response.status, errText);
       return Response.json(
         { error: `Aurora backend error: ${response.status}`, detail: errText },
-        { status: 500 }
+        { status: response.status }
       );
     }
 
