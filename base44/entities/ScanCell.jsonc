@@ -1,0 +1,124 @@
+{
+  "name": "ScanCell",
+  "type": "object",
+  "properties": {
+    "scan_id": {
+      "type": "string",
+      "description": "Parent scan ID reference"
+    },
+    "cell_id": {
+      "type": "string",
+      "description": "Unique cell identifier"
+    },
+    "center_lat": {
+      "type": "number"
+    },
+    "center_lon": {
+      "type": "number"
+    },
+    "s2_b4": {
+      "type": "number",
+      "description": "Sentinel-2 Red band (median composite)"
+    },
+    "s2_b8": {
+      "type": "number",
+      "description": "Sentinel-2 NIR band (median composite)"
+    },
+    "s2_b11": {
+      "type": "number",
+      "description": "Sentinel-2 SWIR1 band (median composite)"
+    },
+    "s2_b12": {
+      "type": "number",
+      "description": "Sentinel-2 SWIR2 band (median composite)"
+    },
+    "s2_cloud_pct": {
+      "type": "number",
+      "description": "Cloud percentage after filtering"
+    },
+    "s2_valid": {
+      "type": "boolean",
+      "description": "Whether S2 data is valid"
+    },
+    "s1_vv": {
+      "type": "number",
+      "description": "Sentinel-1 VV backscatter (dB)"
+    },
+    "s1_vh": {
+      "type": "number",
+      "description": "Sentinel-1 VH backscatter (dB)"
+    },
+    "s1_valid": {
+      "type": "boolean"
+    },
+    "l8_b10": {
+      "type": "number",
+      "description": "Landsat 8 Thermal Infrared Band 10 (Kelvin)"
+    },
+    "l8_valid": {
+      "type": "boolean"
+    },
+    "dem_elevation": {
+      "type": "number",
+      "description": "SRTM elevation (meters)"
+    },
+    "dem_slope": {
+      "type": "number",
+      "description": "Slope (degrees)"
+    },
+    "dem_valid": {
+      "type": "boolean"
+    },
+    "ndvi": {
+      "type": "number",
+      "description": "Computed NDVI from S2"
+    },
+    "clay_index": {
+      "type": "number",
+      "description": "Clay alteration index"
+    },
+    "iron_index": {
+      "type": "number",
+      "description": "Iron oxide index"
+    },
+    "sar_ratio": {
+      "type": "number",
+      "description": "SAR polarization ratio"
+    },
+    "coherence": {
+      "type": "number",
+      "description": "SAR coherence proxy"
+    },
+    "thermal_flux": {
+      "type": "number",
+      "description": "Thermal anomaly"
+    },
+    "acif_score": {
+      "type": "number",
+      "description": "Final ACIF prospectivity score"
+    },
+    "tier": {
+      "type": "string",
+      "enum": [
+        "TIER_1",
+        "TIER_2",
+        "TIER_3",
+        "DATA_MISSING"
+      ],
+      "description": "Prospectivity tier"
+    },
+    "data_sources": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Array of sensor sources used: [S2, S1, L8, DEM]"
+    }
+  },
+  "required": [
+    "scan_id",
+    "cell_id",
+    "center_lat",
+    "center_lon"
+  ]
+}
