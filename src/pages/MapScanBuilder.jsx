@@ -16,7 +16,7 @@
  *   - aoi_id + geometry_hash carried through to scan reference.
  */
 import { useState, useCallback } from "react";
-import { aoi as aoiApi } from "../lib/auroraApi";
+import { aoi as aoiApi, scans } from "../lib/auroraApi";
 import MapDrawTool from "../components/MapDrawTool";
 import AOIPreviewPanel from "../components/AOIPreviewPanel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -102,11 +102,11 @@ export default function MapScanBuilder() {
   }
 
   async function submitScan() {
-    if (!savedAOI) return;
+    if (!savedAOI || !geometry) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await aoiApi.submitScan(savedAOI.aoi_id, { commodity, resolution });
+      const res = await scans.submitPolygon({ geometry, commodity, resolution, aoi_id: savedAOI.aoi_id });
       setSubmitted(res);
       setStep(3);
     } catch (e) {
