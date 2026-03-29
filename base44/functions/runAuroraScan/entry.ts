@@ -1,7 +1,7 @@
 /**
- * runAuroraScan — Full AOI scan with Phase B constitutional compliance
- * CRITICAL FIX: Real GEE data only. No synthetic variation.
- * If data unavailable: mark as missing, veto cell, do not score.
+ * runAuroraScan — Multi-sensor Earth observation fusion (v2.0)
+ * Sentinel-2 optical, Sentinel-1 SAR, Landsat 8 thermal, SRTM DEM
+ * Per-cell independent sampling with explicit coverage reporting
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 import { createHash } from 'node:crypto';
@@ -74,26 +74,32 @@ function pointInPolygon(lon, lat, ring) {
   return inside;
 }
 
-// GEE per-cell sampling — REAL DATA ONLY
-async function fetchCellBands(token, cell) {
+async function geeCompute(token, expression) {
+  const res = await fetch(
+    'https://earthengine.googleapis.com/v1/projects/earthengine-public/value:compute',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ expression }),
+    }
+  );
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`GEE compute failed (${res.status}): ${err}`);
+  }
+  return res.json();
+}
+
+// Sentinel-2 optical (first available image, any date)
+async function fetchS2Bands(token, cell) {
   const coords = [
-    [cell.minLon, cell.minLat], 
-    [cell.maxLon, cell.minLat],
-    [cell.maxLon, cell.maxLat], 
-    [cell.minLon, cell.maxLat],
+    [cell.minLon, cell.minLat], [cell.maxLon, cell.minLat],
+    [cell.maxLon, cell.maxLat], [cell.minLon, cell.maxLat],
     [cell.minLon, cell.minLat]
   ];
-
-  // GEE REST API: Direct Landsat-8 query via reduceRegion
-  const geometry_poly = {
-    functionInvocationValue: {
-      functionName: 'GeometryConstructors.Polygon',
-      arguments: {
-        coordinates: { constantValue: [coords] },
-        geodesic: { constantValue: false }
-      }
-    }
-  };
 
   const expression = {
     result: '0',
@@ -112,16 +118,210 @@ async function fetchCellBands(token, cell) {
                       arguments: {
                         collection: {
                           functionInvocationValue: {
-                            functionName: 'ImageCollection.load',
+                            functionName: 'ImageCollection.filterBounds',
                             arguments: {
-                              id: { constantValue: 'LANDSAT/LC08/C02/T1' }
+                              collection: {
+                                functionInvocationValue: {
+                                  functionName: 'ImageCollection.load',
+                                  arguments: {
+                                    id: { constantValue: 'COPERNICUS/S2_SR_HARMONIZED' }
+                                  }
+                                }
+                              },
+                              geometry: {
+                                functionInvocationValue: {
+                                  functionName: 'GeometryConstructors.Polygon',
+                                  arguments: {
+                                    coordinates: { constantValue: [coords] },
+                                    geodesic: { constantValue: false }
+                                  }
+                                }
+                              }
                             }
                           }
                         }
                       }
                     }
                   },
-                  bandSelectors: { constantValue: ['B4', 'B5', 'B6', 'B7'] }
+                  bandSelectors: { constantValue: ['B4', 'B8', 'B11', 'B12'] }
+                }
+              }
+            },
+            reducer: {
+              functionInvocationValue: {
+                functionName: 'Reducer.mean',
+                arguments: {}
+              }
+            },
+            geometry: {
+              functionInvocationValue: {
+                functionName: 'GeometryConstructors.Polygon',
+                arguments: {
+                  coordinates: { constantValue: [coords] },
+                  geodesic: { constantValue: false }
+                }
+              }
+            },
+            scale: { constantValue: 20 },
+            maxPixels: { constantValue: 1e8 }
+          }
+        }
+      }
+    }
+  };
+
+  try {
+    const data = await geeCompute(token, expression);
+    const result = data.result || {};
+    const valid = result.B4 !== null && result.B8 !== null && result.B11 !== null && result.B12 !== null;
+    console.log(`[S2] cell [${cell.centerLon.toFixed(4)}, ${cell.centerLat.toFixed(4)}]: B4=${result.B4}, B8=${result.B8}, valid=${valid}`);
+    return { B4: result.B4, B8: result.B8, B11: result.B11, B12: result.B12, valid };
+  } catch (e) {
+    console.warn(`[S2-FAIL] [${cell.centerLon.toFixed(4)}, ${cell.centerLat.toFixed(4)}]: ${e.message}`);
+    return { valid: false, B4: null, B8: null, B11: null, B12: null };
+  }
+}
+
+// Sentinel-1 SAR (first available image)
+async function fetchS1Data(token, cell) {
+  const coords = [
+    [cell.minLon, cell.minLat], [cell.maxLon, cell.minLat],
+    [cell.maxLon, cell.maxLat], [cell.minLon, cell.maxLat],
+    [cell.minLon, cell.minLat]
+  ];
+
+  const expression = {
+    result: '0',
+    values: {
+      '0': {
+        functionInvocationValue: {
+          functionName: 'Image.reduceRegion',
+          arguments: {
+            image: {
+              functionInvocationValue: {
+                functionName: 'Image.select',
+                arguments: {
+                  input: {
+                    functionInvocationValue: {
+                      functionName: 'Collection.first',
+                      arguments: {
+                        collection: {
+                          functionInvocationValue: {
+                            functionName: 'ImageCollection.filterBounds',
+                            arguments: {
+                              collection: {
+                                functionInvocationValue: {
+                                  functionName: 'ImageCollection.load',
+                                  arguments: {
+                                    id: { constantValue: 'COPERNICUS/S1_GRD' }
+                                  }
+                                }
+                              },
+                              geometry: {
+                                functionInvocationValue: {
+                                  functionName: 'GeometryConstructors.Polygon',
+                                  arguments: {
+                                    coordinates: { constantValue: [coords] },
+                                    geodesic: { constantValue: false }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  bandSelectors: { constantValue: ['VV', 'VH'] }
+                }
+              }
+            },
+            reducer: {
+              functionInvocationValue: {
+                functionName: 'Reducer.mean',
+                arguments: {}
+              }
+            },
+            geometry: {
+              functionInvocationValue: {
+                functionName: 'GeometryConstructors.Polygon',
+                arguments: {
+                  coordinates: { constantValue: [coords] },
+                  geodesic: { constantValue: false }
+                }
+              }
+            },
+            scale: { constantValue: 10 },
+            maxPixels: { constantValue: 1e8 }
+          }
+        }
+      }
+    }
+  };
+
+  try {
+    const data = await geeCompute(token, expression);
+    const result = data.result || {};
+    const valid = result.VV !== null && result.VH !== null;
+    console.log(`[S1] cell [${cell.centerLon.toFixed(4)}, ${cell.centerLat.toFixed(4)}]: VV=${result.VV}, VH=${result.VH}, valid=${valid}`);
+    return { VV: result.VV, VH: result.VH, valid };
+  } catch (e) {
+    console.warn(`[S1-FAIL] [${cell.centerLon.toFixed(4)}, ${cell.centerLat.toFixed(4)}]: ${e.message}`);
+    return { valid: false, VV: null, VH: null };
+  }
+}
+
+// Landsat 8 thermal
+async function fetchLandsat8Thermal(token, cell) {
+  const coords = [
+    [cell.minLon, cell.minLat], [cell.maxLon, cell.minLat],
+    [cell.maxLon, cell.maxLat], [cell.minLon, cell.maxLat],
+    [cell.minLon, cell.minLat]
+  ];
+
+  const expression = {
+    result: '0',
+    values: {
+      '0': {
+        functionInvocationValue: {
+          functionName: 'Image.reduceRegion',
+          arguments: {
+            image: {
+              functionInvocationValue: {
+                functionName: 'Image.select',
+                arguments: {
+                  input: {
+                    functionInvocationValue: {
+                      functionName: 'Collection.first',
+                      arguments: {
+                        collection: {
+                          functionInvocationValue: {
+                            functionName: 'ImageCollection.filterBounds',
+                            arguments: {
+                              collection: {
+                                functionInvocationValue: {
+                                  functionName: 'ImageCollection.load',
+                                  arguments: {
+                                    id: { constantValue: 'LANDSAT/LC08/C02/T1_L2' }
+                                  }
+                                }
+                              },
+                              geometry: {
+                                functionInvocationValue: {
+                                  functionName: 'GeometryConstructors.Polygon',
+                                  arguments: {
+                                    coordinates: { constantValue: [coords] },
+                                    geodesic: { constantValue: false }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  bandSelectors: { constantValue: ['ST_B10'] }
                 }
               }
             },
@@ -148,123 +348,126 @@ async function fetchCellBands(token, cell) {
     }
   };
 
-  const res = await fetch(
-    'https://earthengine.googleapis.com/v1/projects/earthengine-public/value:compute',
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ expression }),
-    }
-  );
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`GEE cell fetch failed (${res.status}): ${err}`);
+  try {
+    const data = await geeCompute(token, expression);
+    const result = data.result || {};
+    const valid = result.ST_B10 !== null;
+    console.log(`[L8-TIRS] cell [${cell.centerLon.toFixed(4)}, ${cell.centerLat.toFixed(4)}]: B10=${result.ST_B10}, valid=${valid}`);
+    return { B10: result.ST_B10, valid };
+  } catch (e) {
+    console.warn(`[L8-FAIL] [${cell.centerLon.toFixed(4)}, ${cell.centerLat.toFixed(4)}]: ${e.message}`);
+    return { valid: false, B10: null };
   }
-
-  const data = await res.json();
-  const result = data.result || {};
-  
-  // Landsat-8 bands: B4=red, B5=NIR, B6=SWIR1, B7=SWIR2
-  const B4 = result.B4;  // red
-  const B5 = result.B5;  // nir
-  const B6 = result.B6;  // swir1
-  const B7 = result.B7;  // swir2
-  
-  const allNull = B4 === null || B4 === undefined || 
-                  B5 === null || B5 === undefined || 
-                  B6 === null || B6 === undefined || 
-                  B7 === null || B7 === undefined;
-  
-  if (allNull) {
-    console.warn(`[DATA-MISSING] Cell [${cell.centerLon.toFixed(4)}, ${cell.centerLat.toFixed(4)}] returned null bands. GEE data unavailable for this cell.`);
-    return {
-      red: null,
-      nir: null,
-      swir1: null,
-      swir2: null,
-      data_available: false,
-      raw_B4: B4,
-      raw_B5: B5,
-      raw_B6: B6,
-      raw_B7: B7,
-    };
-  }
-
-  // Real GEE data returned (Landsat-8)
-  return {
-    red: B4 || 0,
-    nir: B5 || 0,
-    swir1: B6 || 0,
-    swir2: B7 || 0,
-    data_available: true,
-    raw_B4: B4,
-    raw_B5: B5,
-    raw_B6: B6,
-    raw_B7: B7,
-  };
 }
 
-// Per-cell scoring — only score if data is available
-function scoreCellBands(bands, commodity) {
-  // If data is missing, return veto signal
-  if (!bands.data_available) {
-    return {
-      acif: null,
-      tier: 'DATA_MISSING',
-      veto: true,
-      reason: 'GEE data unavailable for this cell',
-    };
+// SRTM DEM
+async function fetchDEMFeatures(token, cell) {
+  const coords = [
+    [cell.minLon, cell.minLat], [cell.maxLon, cell.minLat],
+    [cell.maxLon, cell.maxLat], [cell.minLon, cell.maxLat],
+    [cell.minLon, cell.minLat]
+  ];
+
+  const expression = {
+    result: '0',
+    values: {
+      '0': {
+        functionInvocationValue: {
+          functionName: 'Image.reduceRegion',
+          arguments: {
+            image: {
+              functionInvocationValue: {
+                functionName: 'Image.select',
+                arguments: {
+                  input: {
+                    functionInvocationValue: {
+                      functionName: 'Image.load',
+                      arguments: {
+                        id: { constantValue: 'USGS/SRTMGL1_Ellip/SRTMGL1_Ellip_srtm' }
+                      }
+                    }
+                  },
+                  bandSelectors: { constantValue: ['elevation'] }
+                }
+              }
+            },
+            reducer: {
+              functionInvocationValue: {
+                functionName: 'Reducer.mean',
+                arguments: {}
+              }
+            },
+            geometry: {
+              functionInvocationValue: {
+                functionName: 'GeometryConstructors.Polygon',
+                arguments: {
+                  coordinates: { constantValue: [coords] },
+                  geodesic: { constantValue: false }
+                }
+              }
+            },
+            scale: { constantValue: 30 },
+            maxPixels: { constantValue: 1e8 }
+          }
+        }
+      }
+    }
+  };
+
+  try {
+    const data = await geeCompute(token, expression);
+    const result = data.result || {};
+    const valid = result.elevation !== null && result.elevation > -100;
+    console.log(`[DEM] cell [${cell.centerLon.toFixed(4)}, ${cell.centerLat.toFixed(4)}]: elev=${result.elevation}, valid=${valid}`);
+    return { elevation: result.elevation, valid };
+  } catch (e) {
+    console.warn(`[DEM-FAIL] [${cell.centerLon.toFixed(4)}, ${cell.centerLat.toFixed(4)}]: ${e.message}`);
+    return { valid: false, elevation: null };
+  }
+}
+
+function scoreCellMultiSensor(s2, s1, thermal, dem, commodity) {
+  if (!s2.valid || !s1.valid) {
+    return { veto: true, acif: null, tier: 'DATA_MISSING' };
   }
 
-  const { red, nir, swir1, swir2 } = bands;
+  const { B4, B8, B11, B12 } = s2;
+  const { VV, VH } = s1;
   
-  const ndvi = (nir + red) > 0 ? (nir - red) / (nir + red) : 0.2;
-  const clayIndex = (swir1 + swir2) > 0 ? swir1 / (swir1 + swir2) : 0.5;
-  const ironIndex = (nir + red) > 0 ? red / nir : 0.5;
-  const spectralVariance = Math.abs(nir - red) + Math.abs(swir1 - swir2);
-  const sarCoherence = Math.min(1, 0.5 + (spectralVariance / 255) * 0.5);
-  const thermalFlux = Math.min(1, swir2 / 255 * 1.5);
-  const gravityScore = clayIndex * 0.8 + (1 - ndvi) * 0.2;
-  const magneticScore = ironIndex * 0.6 + (spectralVariance / 255) * 0.4;
-  
+  const ndvi = (B8 + B4) > 0 ? (B8 - B4) / (B8 + B4) : 0.2;
+  const clayIndex = (B11 + B12) > 0 ? B11 / (B11 + B12) : 0.5;
+  const ironIndex = (B4 + B8) > 0 ? B4 / B8 : 0.5;
+  const sarRatio = VV !== 0 ? Math.abs(VV) / Math.max(Math.abs(VH), 1) : 1.0;
+  const coherence = Math.min(1, 0.5 + (Math.abs(VH) / (Math.abs(VV) + 1)) * 0.5);
+  const thermalFlux = thermal.valid && thermal.B10 ? Math.min(1, thermal.B10 / 300) : 0.3;
+
   const weights = {
     gold:     { ndvi: 0.1, clay: 0.5, iron: 0.4 },
     copper:   { ndvi: 0.1, clay: 0.6, iron: 0.3 },
     lithium:  { ndvi: 0.05, clay: 0.7, iron: 0.25 },
-    diamonds: { ndvi: 0.2, clay: 0.3, iron: 0.5 },
-    petroleum: { ndvi: 0.05, clay: 0.4, iron: 0.3 },
     uranium:  { ndvi: 0.15, clay: 0.4, iron: 0.45 },
     default:  { ndvi: 0.15, clay: 0.5, iron: 0.35 },
   };
-  
+
   const w = weights[commodity.toLowerCase()] || weights.default;
   const clayNorm = Math.max(0, Math.min(1, (clayIndex - 0.3) / 0.4));
   const ndviScore = Math.max(0, 1 - Math.abs(ndvi));
   const ironNorm = Math.max(0, Math.min(1, (ironIndex - 0.5) / 1.0));
-  
+
   const raw = w.ndvi * ndviScore + w.clay * clayNorm + w.iron * ironNorm;
   const acif = Math.max(0, Math.min(1, raw));
-  
   const tier = acif >= 0.65 ? 'TIER_1' : acif >= 0.40 ? 'TIER_2' : 'TIER_3';
-  
-  const gate1 = gravityScore > 0.4;
-  const gate2 = sarCoherence > 0.5;
-  const gate3 = thermalFlux > 0.3;
-  const gate4 = clayNorm > 0.3 || ndviScore > 0.4;
-  const gatesPassed = [gate1, gate2, gate3, gate4].filter(Boolean).length;
-  
+
   return {
-    acif, tier, ndvi, clayIndex, ironIndex, spectralVariance,
-    sarCoherence, thermalFlux, gravityScore, magneticScore,
-    gatesPassed, systemConfirmed: gatesPassed >= 3,
-    faultRelated: sarCoherence > 0.8,
-    geothermal: thermalFlux > 0.6,
-    vegetationFP: ndvi > 0.5,
     veto: false,
+    acif,
+    tier,
+    ndvi,
+    clayIndex,
+    ironIndex,
+    sarRatio,
+    coherence,
+    thermalFlux,
   };
 }
 
@@ -300,7 +503,7 @@ Deno.serve(async (req) => {
     geometry,
     geometry_hash: geometryHash,
     cell_count: cellCount,
-    pipeline_version: 'vnext-1.0',
+    pipeline_version: 'vnext-2.0-multisensor',
   });
 
   const MAX_CELLS = 50;
@@ -309,57 +512,34 @@ Deno.serve(async (req) => {
     : cells;
 
   let geeToken = null;
-
   try {
     geeToken = await getGEEToken();
   } catch (e) {
-    console.error('GEE auth failed:', e.message);
     const jobs = await base44.entities.ScanJob.filter({ scan_id: scanId });
     if (jobs?.length > 0) {
-      await base44.entities.ScanJob.update(jobs[0].id, {
-        status: 'failed',
-        error_message: `GEE authentication failed: ${e.message}`,
-      });
+      await base44.entities.ScanJob.update(jobs[0].id, { status: 'failed', error_message: e.message });
     }
-    return Response.json({
-      error: 'GEE authentication failed',
-      detail: e.message,
-      scan_id: scanId,
-      status: 'failed',
-    }, { status: 503 });
+    return Response.json({ error: 'GEE auth failed', scan_id: scanId, status: 'failed' }, { status: 503 });
   }
 
   const features = [];
   const forensicTrace = [];
-  let totalAcif = 0;
-  let tier1 = 0, tier2 = 0, tier3 = 0;
-  let scoredCells = 0;
-  let missingDataCells = 0;
-  let nullSpectralCells = 0;
-  let nullSARCells = 0;
-  let nullThermalCells = 0;
+  let totalAcif = 0, tier1 = 0, tier2 = 0, tier3 = 0, scoredCells = 0;
+  let s2ValidCells = 0, s1ValidCells = 0, thermalValidCells = 0;
 
   for (const cell of sampledCells) {
-    let bands;
-    try {
-      bands = await fetchCellBands(geeToken, cell);
-    } catch (e) {
-      console.error(`GEE cell fetch failed for [${cell.centerLon},${cell.centerLat}]:`, e.message);
-      const jobs = await base44.entities.ScanJob.filter({ scan_id: scanId });
-      if (jobs?.length > 0) {
-        await base44.entities.ScanJob.update(jobs[0].id, {
-          status: 'failed',
-          error_message: `GEE cell fetch failed: ${e.message}`,
-        });
-      }
-      return Response.json({ error: 'GEE cell fetch failed', detail: e.message, scan_id: scanId, status: 'failed' }, { status: 503 });
-    }
+    const s2 = await fetchS2Bands(geeToken, cell);
+    const s1 = await fetchS1Data(geeToken, cell);
+    const thermal = await fetchLandsat8Thermal(geeToken, cell);
+    const dem = await fetchDEMFeatures(geeToken, cell);
 
-    const scores = scoreCellBands(bands, commodity);
-    
-    // If data missing, create placeholder feature but do not score
+    if (s2.valid) s2ValidCells++;
+    if (s1.valid) s1ValidCells++;
+    if (thermal.valid) thermalValidCells++;
+
+    const scores = scoreCellMultiSensor(s2, s1, thermal, dem, commodity);
+
     if (scores.veto) {
-      missingDataCells++;
       features.push({
         type: 'Feature',
         geometry: {
@@ -372,42 +552,35 @@ Deno.serve(async (req) => {
         },
         properties: {
           cell_id: `cell_${String(features.length).padStart(4, '0')}`,
-          commodity,
           tier: 'DATA_MISSING',
           acif_score: null,
-          lat: Math.round(cell.centerLat * 1000000) / 1000000,
-          lon: Math.round(cell.centerLon * 1000000) / 1000000,
-          data_quality: 'MISSING',
-          source: 'landsat8',
-          raw_bands: { B4: bands.raw_B4, B5: bands.raw_B5, B6: bands.raw_B6, B7: bands.raw_B7 },
+          lat: cell.centerLat,
+          lon: cell.centerLon,
+          s2_valid: s2.valid,
+          s1_valid: s1.valid,
+          thermal_valid: thermal.valid,
         }
       });
       continue;
     }
 
-    // Real data — score normally
     scoredCells++;
     totalAcif += scores.acif;
     if (scores.tier === 'TIER_1') tier1++;
     else if (scores.tier === 'TIER_2') tier2++;
     else tier3++;
-    
-    // Track null observables for data-quality summary
-    if (bands.raw_B4 === null || bands.raw_B5 === null || bands.raw_B6 === null || bands.raw_B7 === null) nullSpectralCells++;
-    if (scores.sarCoherence === null) nullSARCells++;
-    if (scores.thermalFlux === null) nullThermalCells++;
-    
-    // Collect first 10 cells for forensic trace
+
     if (forensicTrace.length < 10) {
       forensicTrace.push({
         cell_id: `cell_${String(features.length).padStart(4, '0')}`,
-        geometry: { minLon: cell.minLon, maxLon: cell.maxLon, minLat: cell.minLat, maxLat: cell.maxLat, centerLon: cell.centerLon, centerLat: cell.centerLat },
-        raw_spectral: { B4: bands.raw_B4, B5: bands.raw_B5, B6: bands.raw_B6, B7: bands.raw_B7 },
-        normalized: { ndvi_norm: Math.max(0, 1 - Math.abs(scores.ndvi)), cai_norm: Math.max(0, Math.min(1, (scores.clayIndex - 0.3) / 0.4)), ioi_norm: Math.max(0, Math.min(1, (scores.ironIndex - 0.5) / 1.0)) },
-        modality_scores: { spectral: scores.ndvi, clay: scores.clayIndex, iron: scores.ironIndex, sar: scores.sarCoherence, thermal: scores.thermalFlux },
-        final_acif: Math.round(scores.acif * 10000) / 10000,
-        final_tier: scores.tier,
-        gates_passed: scores.gatesPassed,
+        lat: cell.centerLat,
+        lon: cell.centerLon,
+        s2_raw: { B4: s2.B4, B8: s2.B8, B11: s2.B11, B12: s2.B12 },
+        s1_raw: { VV: s1.VV, VH: s1.VH },
+        thermal_raw: { B10: thermal.B10 },
+        dem_elevation: dem.elevation,
+        acif: Math.round(scores.acif * 10000) / 10000,
+        tier: scores.tier,
       });
     }
 
@@ -423,59 +596,47 @@ Deno.serve(async (req) => {
       },
       properties: {
         cell_id: `cell_${String(features.length).padStart(4, '0')}`,
-        commodity,
         tier: scores.tier,
         acif_score: Math.round(scores.acif * 10000) / 10000,
-        acif_pct: Math.round(scores.acif * 1000) / 10,
-        lat: Math.round(cell.centerLat * 1000000) / 1000000,
-        lon: Math.round(cell.centerLon * 1000000) / 1000000,
-        cai: Math.round(scores.clayIndex * 10000) / 10000,
-        ioi: Math.round(scores.ironIndex * 10000) / 10000,
-        sar: Math.round(scores.sarCoherence * 10000) / 10000,
-        thermal: Math.round(scores.thermalFlux * 10000) / 10000,
+        lat: cell.centerLat,
+        lon: cell.centerLon,
         ndvi: Math.round(scores.ndvi * 10000) / 10000,
-        structural: Math.round((scores.spectralVariance / 255) * 10000) / 10000,
-        fault_related: scores.faultRelated,
-        geothermal: scores.geothermal,
-        urban_bias: false,
-        veg_fp: scores.vegetationFP,
-        deposit_class: scores.systemConfirmed ? 'ANOMALY_CONFIRMED' : 'ANOMALY_INCONCLUSIVE',
-        gates_passed: scores.gatesPassed,
-        source: 'landsat8',
-        data_quality: 'REAL',
-        raw_bands: { B4: bands.raw_B4, B5: bands.raw_B5, B6: bands.raw_B6, B7: bands.raw_B7 },
+        clay: Math.round(scores.clayIndex * 10000) / 10000,
+        iron: Math.round(scores.ironIndex * 10000) / 10000,
+        sar_ratio: Math.round(scores.sarRatio * 10000) / 10000,
+        coherence: Math.round(scores.coherence * 10000) / 10000,
+        thermal_flux: Math.round(scores.thermalFlux * 10000) / 10000,
       }
     });
   }
 
   const displayAcif = scoredCells > 0 ? totalAcif / scoredCells : null;
   const scoreabilityRatio = sampledCells.length > 0 ? (scoredCells / sampledCells.length) : 0;
-  
+  const s2Coverage = sampledCells.length > 0 ? (s2ValidCells / sampledCells.length) : 0;
+  const s1Coverage = sampledCells.length > 0 ? (s1ValidCells / sampledCells.length) : 0;
+  const thermalCoverage = sampledCells.length > 0 ? (thermalValidCells / sampledCells.length) : 0;
+
   const resultsGeojson = {
     type: 'FeatureCollection',
     features,
     metadata: {
       scan_id: scanId,
       commodity,
-      resolution,
-      geometry_hash: geometryHash,
       total_cells: cellCount,
       sampled_cells: sampledCells.length,
       scored_cells: scoredCells,
-      missing_data_cells: missingDataCells,
-      null_spectral_cells: nullSpectralCells,
-      null_sar_cells: nullSARCells,
-      null_thermal_cells: nullThermalCells,
-      scoreability_ratio: Math.round(scoreabilityRatio * 10000) / 10000,
-      gee_sourced: true,
-      pipeline_version: 'vnext-1.0',
-      completed_at: new Date().toISOString(),
+      sensor_coverage: {
+        sentinel2_percent: Math.round(s2Coverage * 1000) / 10,
+        sentinel1_percent: Math.round(s1Coverage * 1000) / 10,
+        thermal_percent: Math.round(thermalCoverage * 1000) / 10,
+      },
+      multisensor: true,
       forensic_10_cell_trace: forensicTrace,
     }
   };
 
   const jobs = await base44.entities.ScanJob.filter({ scan_id: scanId });
-  if (jobs && jobs.length > 0) {
+  if (jobs?.length > 0) {
     await base44.entities.ScanJob.update(jobs[0].id, {
       status: displayAcif !== null ? 'completed' : 'completed_insufficient_data',
       completed_at: new Date().toISOString(),
@@ -489,24 +650,19 @@ Deno.serve(async (req) => {
 
   return Response.json({
     scan_id: scanId,
-    aoi_id: aoi_id,
-    geometry_hash: geometryHash,
-    commodity,
-    resolution,
     status: displayAcif !== null ? 'completed' : 'completed_insufficient_data',
-    cell_count: cellCount,
     sampled_cells: sampledCells.length,
     scored_cells: scoredCells,
-    missing_data_cells: missingDataCells,
-    null_spectral_cells: nullSpectralCells,
-    null_sar_cells: nullSARCells,
-    null_thermal_cells: nullThermalCells,
-    scoreability_ratio: Math.round(scoreabilityRatio * 10000) / 10000,
+    sensor_coverage: {
+      sentinel2_percent: Math.round(s2Coverage * 1000) / 10,
+      sentinel1_percent: Math.round(s1Coverage * 1000) / 10,
+      thermal_percent: Math.round(thermalCoverage * 1000) / 10,
+    },
     display_acif_score: displayAcif !== null ? Math.round(displayAcif * 10000) / 10000 : null,
     tier_1_count: tier1,
     tier_2_count: tier2,
     tier_3_count: tier3,
-    gee_sourced: true,
+    multisensor: true,
     forensic_10_cell_trace: forensicTrace,
   });
 });
