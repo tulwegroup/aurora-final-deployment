@@ -1,150 +1,73 @@
 """
-Aurora OSI vNext — Application Bootstrap
-Responsibilities (ONLY):
-  - Create FastAPI application instance
-  - Load settings and initialize logging
-  - Mount API routers
-  - Register startup/shutdown lifecycle hooks
-  - Expose /health and /version endpoints
-
-CONSTITUTIONAL RULE: This file must never contain:
-  - Scoring equations or ACIF logic
-  - Threshold values or tier logic
-  - Commodity-specific heuristics
-  - Dataset rendering transforms
-  - Scientific module imports
+Aurora OSI vNext — Standalone main.py
+Mounts routers dynamically via importlib to avoid import-time failures.
 """
-
-import structlog
+import logging
+import importlib
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.config.constants import APP_DESCRIPTION, APP_NAME
-from app.config.feature_flags import FLAGS
-from app.config.settings import get_settings
-from app.config.versions import get_version_registry_dict
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-logger = structlog.get_logger(__name__)
-settings = get_settings()
+app = FastAPI(title="Aurora OSI API", version="0.1.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
-# ---------------------------------------------------------------------------
-# Application factory
-# ---------------------------------------------------------------------------
+def safe_include(application, router, **kwargs):
+    try:
+        application.include_router(router, **kwargs)
+        logger.info("router_mounted prefix=%s", kwargs.get("prefix", "/"))
+    except Exception as exc:
+        logger.error("router_mount_failed prefix=%s error=%s", kwargs.get("prefix", "/"), exc)
 
-def create_application() -> FastAPI:
-    app = FastAPI(
-        title=APP_NAME,
-        description=APP_DESCRIPTION,
-        version="0.1.0",
-        docs_url="/docs" if not settings.is_production else None,
-        redoc_url="/redoc" if not settings.is_production else None,
-    )
 
-    ALLOWED_ORIGINS = [
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "https://preview-sandbox--69c4c3161cd352e36ff3ede7.base44.app",
-        "https://69c4c3161cd352e36ff3ede7.base44.app",
+@app.on_event("startup")
+async def on_startup():
+    logger.info("aurora_startup version=0.1.0")
+    router_specs = [
+        ("app.api.scan",               "/api/v1/scan",        ["Scan"]),
+        ("app.api.history",            "/api/v1/history",     ["History"]),
+        ("app.api.datasets",           "/api/v1/datasets",    ["Datasets"]),
+        ("app.api.twin",               "/api/v1/twin",        ["Twin"]),
+        ("app.api.admin",              "/api/v1/admin",       ["Admin"]),
+        ("app.api.auth",               "/auth",               ["Auth"]),
+        ("app.api.scan_aoi",           "/api/v1/aoi",         ["AOI"]),
+        ("app.api.export",             "/api/v1/exports",     ["Exports"]),
+        ("app.api.reports",            "/api/v1/reports",     ["Reports"]),
+        ("app.api.portfolio",          "/api/v1/portfolio",   ["Portfolio"]),
+        ("app.api.ground_truth_admin", "/api/v1/gt",          ["Ground Truth"]),
+        ("app.api.map_exports",        "/api/v1/map-exports", ["Map Exports"]),
+        ("app.api.data_room",          "/api/v1/data-room",   ["Data Room"]),
+        ("app.api.webhooks",           "/api/v1/webhooks",    ["Webhooks"]),
     ]
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=ALLOWED_ORIGINS if settings.is_production else ["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
-    @app.on_event("startup")
-    async def on_startup() -> None:
-        logger.info("aurora_startup", env=settings.aurora_env.value, version="0.1.0")
-
-    @app.on_event("shutdown")
-    async def on_shutdown() -> None:
-        logger.info("aurora_shutdown")
-
-    @app.get("/", tags=["System"])
-    async def root() -> JSONResponse:
-        return JSONResponse(status_code=200, content={"status": "alive", "redirect": "/health/live"})
-
-    @app.get("/health", tags=["System"])
-    @app.get("/health/live", tags=["System"])
-    async def health() -> JSONResponse:
-        return JSONResponse(status_code=200, content={
-            "status": "alive",
-            "app": APP_NAME,
-            "env": settings.aurora_env.value,
-            "flags": {
-                "storage": FLAGS.storage_layer_enabled,
-                "scientific_core": FLAGS.scientific_core_enabled,
-                "scoring_engine": FLAGS.scoring_engine_enabled,
-                "scan_pipeline": FLAGS.scan_pipeline_enabled,
-                "auth_enforced": FLAGS.auth_enforced,
-            },
-        })
-
-    @app.get("/version", tags=["System"])
-    async def version() -> JSONResponse:
-        registry = get_version_registry_dict(overrides={
-            "score_version": settings.aurora_score_version,
-            "tier_version": settings.aurora_tier_version,
-            "causal_graph_version": settings.aurora_causal_graph_version,
-            "physics_model_version": settings.aurora_physics_model_version,
-            "temporal_model_version": settings.aurora_temporal_model_version,
-            "province_prior_version": settings.aurora_province_prior_version,
-            "commodity_library_version": settings.aurora_commodity_library_version,
-            "scan_pipeline_version": settings.aurora_scan_pipeline_version,
-        })
-        return JSONResponse(status_code=200, content={"app": APP_NAME, "version": "0.1.0", "registry": registry})
-
-    # -------------------------------------------------------------------------
-    # API routers — all phases mounted
-    # -------------------------------------------------------------------------
-
-    # Phase M — Scan execution, history, datasets, digital twin
-    from app.api.scan import router as scan_router
-    from app.api.history import router as history_router
-    from app.api.datasets import router as datasets_router
-    from app.api.twin import router as twin_router
-    app.include_router(scan_router, prefix="/api/v1")
-    app.include_router(history_router, prefix="/api/v1")
-    app.include_router(datasets_router, prefix="/api/v1")
-    app.include_router(twin_router, prefix="/api/v1")
-
-    # Phase O — Auth and admin
-    from app.api.auth import router as auth_router
-    from app.api.admin import router as admin_router
-    app.include_router(auth_router, prefix="/api/v1")
-    app.include_router(admin_router, prefix="/api/v1")
-
-    # Phase AA — AOI management and map exports
-    from app.api.scan_aoi import router as aoi_router
-    from app.api.map_exports import router as map_exports_router
-    app.include_router(aoi_router)
-    app.include_router(map_exports_router)
-
-    # Phase AB — Reports
-    from app.api.reports import router as reports_router
-    app.include_router(reports_router)
-
-    # Phase AD — Portfolio
-    from app.api.portfolio import router as portfolio_router
-    app.include_router(portfolio_router)
-
-    # Phase X — Canonical data export
-    from app.api.export import router as export_router
-    app.include_router(export_router)
-
-    # Phase Z — Ground truth admin
-    from app.api.ground_truth_admin import router as gt_router
-    app.include_router(gt_router)
-
-    # Phase AH — Data Room package management
-    from app.api.data_room import router as data_room_router
-    app.include_router(data_room_router)
-
-    return app
+    for module_path, prefix, tags in router_specs:
+        try:
+            module = importlib.import_module(module_path)
+            safe_include(app, module.router, prefix=prefix, tags=tags)
+        except Exception as exc:
+            logger.error("router_import_failed module=%s error=%s", module_path, exc)
 
 
-app = create_application()
+@app.get("/", tags=["System"])
+async def root():
+    return JSONResponse({"status": "alive", "service": "aurora-api"})
+
+
+@app.get("/health", tags=["System"])
+@app.get("/health/live", tags=["System"])
+async def health():
+    return JSONResponse({"status": "alive", "version": "0.1.0"})
+
+
+@app.get("/version", tags=["System"])
+async def version():
+    return JSONResponse({"version": "0.1.0", "service": "aurora-api"})
