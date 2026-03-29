@@ -5,7 +5,7 @@
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
-const AURORA_BASE = Deno.env.get('AURORA_BACKEND_URL') || 'https://api.aurora-osi.com';
+const AURORA_BASE = 'https://api.aurora-osi.com';
 
 Deno.serve(async (req) => {
   const base44 = createClientFromRequest(req);
