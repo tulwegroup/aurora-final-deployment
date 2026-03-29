@@ -46,120 +46,120 @@ export const auth = {
 
 // Scans
 export const scans = {
-  submitGrid:    (body)    => request("POST", "/scan/grid",         body),
-  submitPolygon: (body)    => request("POST", "/scan/polygon",      body),
-  status:        (scanId)  => request("GET",  `/scan/status/${scanId}`),
-  active:        ()        => request("GET",  "/scan/active"),
-  cancel:        (scanId)  => request("POST", `/scan/${scanId}/cancel`),
+  submitGrid:    (body)    => request("POST", "/api/v1/scan/grid",         body),
+  submitPolygon: (body)    => request("POST", "/api/v1/scan/polygon",      body),
+  status:        (scanId)  => request("GET",  `/api/v1/scan/status/${scanId}`),
+  active:        ()        => request("GET",  "/api/v1/scan/active"),
+  cancel:        (scanId)  => request("POST", `/api/v1/scan/${scanId}/cancel`),
 };
 
 // History
 export const history = {
   list:      (params = {})           => {
     const q = new URLSearchParams(params).toString();
-    return request("GET", `/history${q ? "?" + q : ""}`);
+    return request("GET", `/api/v1/history${q ? "?" + q : ""}`);
   },
-  get:       (scanId)                => request("GET",    `/history/${scanId}`),
+  get:       (scanId)                => request("GET",    `/api/v1/history/${scanId}`),
   cells:     (scanId, params = {})   => {
     const q = new URLSearchParams(params).toString();
-    return request("GET", `/history/${scanId}/cells${q ? "?" + q : ""}`);
+    return request("GET", `/api/v1/history/${scanId}/cells${q ? "?" + q : ""}`);
   },
-  cell:      (scanId, cellId)        => request("GET",    `/history/${scanId}/cells/${cellId}`),
-  delete:    (scanId, reason)        => request("DELETE", `/history/${scanId}?reason=${encodeURIComponent(reason)}`),
+  cell:      (scanId, cellId)        => request("GET",    `/api/v1/history/${scanId}/cells/${cellId}`),
+  delete:    (scanId, reason)        => request("DELETE", `/api/v1/history/${scanId}?reason=${encodeURIComponent(reason)}`),
   reprocess: (scanId, deltaH, reason) =>
-    request("POST", `/history/${scanId}/reprocess?new_delta_h_m=${deltaH}&reason=${encodeURIComponent(reason)}`),
+    request("POST", `/api/v1/history/${scanId}/reprocess?new_delta_h_m=${deltaH}&reason=${encodeURIComponent(reason)}`),
 };
 
 // Datasets
 export const datasets = {
-  summary:    (scanId)           => request("GET", `/datasets/summary/${scanId}`),
+  summary:    (scanId)           => request("GET", `/api/v1/datasets/summary/${scanId}`),
   geojson:    (scanId, params={})=> {
     const q = new URLSearchParams(params).toString();
-    return request("GET", `/datasets/geojson/${scanId}${q ? "?" + q : ""}`);
+    return request("GET", `/api/v1/datasets/geojson/${scanId}${q ? "?" + q : ""}`);
   },
-  rasterSpec: (scanId)           => request("GET", `/datasets/raster-spec/${scanId}`),
-  exportData: (scanId, fmt="json")=> request("GET", `/datasets/export/${scanId}?format=${fmt}`),
+  rasterSpec: (scanId)           => request("GET", `/api/v1/datasets/raster-spec/${scanId}`),
+  exportData: (scanId, fmt="json")=> request("GET", `/api/v1/datasets/export/${scanId}?format=${fmt}`),
 };
 
 // Twin
 export const twin = {
-  metadata: (scanId)        => request("GET",  `/twin/${scanId}`),
-  query:    (scanId, body)  => request("POST", `/twin/${scanId}/query`, body),
+  metadata: (scanId)        => request("GET",  `/api/v1/twin/${scanId}`),
+  query:    (scanId, body)  => request("POST", `/api/v1/twin/${scanId}/query`, body),
   slice:    (scanId, depth, tol=50) =>
-    request("GET", `/twin/${scanId}/slice?depth_m=${depth}&depth_tolerance_m=${tol}`),
-  voxel:    (scanId, voxelId) => request("GET", `/twin/${scanId}/voxel/${voxelId}`),
-  history:  (scanId)          => request("GET", `/twin/${scanId}/history`),
+    request("GET", `/api/v1/twin/${scanId}/slice?depth_m=${depth}&depth_tolerance_m=${tol}`),
+  voxel:    (scanId, voxelId) => request("GET", `/api/v1/twin/${scanId}/voxel/${voxelId}`),
+  history:  (scanId)          => request("GET", `/api/v1/twin/${scanId}/history`),
 };
 
 // Admin
 export const admin = {
-  listUsers:  ()                      => request("GET",   "/admin/users"),
-  createUser: (body)                  => request("POST",  "/admin/users", body),
-  updateRole: (userId, role, reason)  => request("PATCH", `/admin/users/${userId}/role`, { user_id: userId, new_role: role, reason }),
+  listUsers:  ()                      => request("GET",   "/api/v1/admin/users"),
+  createUser: (body)                  => request("POST",  "/api/v1/admin/users", body),
+  updateRole: (userId, role, reason)  => request("PATCH", `/api/v1/admin/users/${userId}/role`, { user_id: userId, new_role: role, reason }),
   auditLog:   (params = {})           => {
     const q = new URLSearchParams(params).toString();
-    return request("GET", `/admin/audit${q ? "?" + q : ""}`);
+    return request("GET", `/api/v1/admin/audit${q ? "?" + q : ""}`);
   },
-  bootstrapStatus: () => request("GET", "/admin/bootstrap-status"),
+  bootstrapStatus: () => request("GET", "/api/v1/admin/bootstrap-status"),
 };
 
 // AOI
 export const aoi = {
-  validate:   (geometry, maxAreaKm2)  => request("POST", "/aoi/validate", { geometry, max_area_km2: maxAreaKm2 }),
-  save:       (body)                  => request("POST", "/aoi", body),
-  get:        (aoiId)                 => request("GET",  `/aoi/${aoiId}`),
-  estimate:   (aoiId)                 => request("GET",  `/aoi/${aoiId}/estimate`),
-  submitScan: (aoiId, body)           => request("POST", `/aoi/${aoiId}/submit-scan`, body),
-  verify:     (aoiId)                 => request("GET",  `/aoi/${aoiId}/verify`),
+  validate:   (geometry, maxAreaKm2)  => request("POST", "/api/v1/aoi/validate", { geometry, max_area_km2: maxAreaKm2 }),
+  save:       (body)                  => request("POST", "/api/v1/aoi", body),
+  get:        (aoiId)                 => request("GET",  `/api/v1/aoi/${aoiId}`),
+  estimate:   (aoiId)                 => request("GET",  `/api/v1/aoi/${aoiId}/estimate`),
+  submitScan: (aoiId, body)           => request("POST", `/api/v1/aoi/${aoiId}/submit-scan`, body),
+  verify:     (aoiId)                 => request("GET",  `/api/v1/aoi/${aoiId}/verify`),
 };
 
 // Map Exports
 export const mapExports = {
-  layers:   ()              => request("GET",  "/exports/layers"),
-  kml:      (scanId, body)  => request("POST", `/exports/${scanId}/kml`,     body),
-  kmz:      (scanId, body)  => request("POST", `/exports/${scanId}/kmz`,     body),
-  geojson:  (scanId, body)  => request("POST", `/exports/${scanId}/geojson`, body),
+  layers:   ()              => request("GET",  "/api/v1/exports/layers"),
+  kml:      (scanId, body)  => request("POST", `/api/v1/exports/${scanId}/kml`,     body),
+  kmz:      (scanId, body)  => request("POST", `/api/v1/exports/${scanId}/kmz`,     body),
+  geojson:  (scanId, body)  => request("POST", `/api/v1/exports/${scanId}/geojson`, body),
 };
 
 // Reports
 export const reports = {
-  generate: (scanId, audience) => request("POST", `/reports/${scanId}`, { audience }),
-  list:     (scanId)           => request("GET",  `/reports/${scanId}`),
-  get:      (scanId, reportId) => request("GET",  `/reports/${scanId}/${reportId}`),
-  audit:    (scanId, reportId) => request("GET",  `/reports/${scanId}/${reportId}/audit`),
+  generate: (scanId, audience) => request("POST", `/api/v1/reports/${scanId}`, { audience }),
+  list:     (scanId)           => request("GET",  `/api/v1/reports/${scanId}`),
+  get:      (scanId, reportId) => request("GET",  `/api/v1/reports/${scanId}/${reportId}`),
+  audit:    (scanId, reportId) => request("GET",  `/api/v1/reports/${scanId}/${reportId}/audit`),
 };
 
 // Portfolio
 export const portfolio = {
   list:        (params = {})     => {
     const q = new URLSearchParams(params).toString();
-    return request("GET", `/portfolio${q ? "?" + q : ""}`);
+    return request("GET", `/api/v1/portfolio${q ? "?" + q : ""}`);
   },
   snapshot:    (params = {})     => {
     const q = new URLSearchParams(params).toString();
-    return request("GET", `/portfolio/snapshot${q ? "?" + q : ""}`);
+    return request("GET", `/api/v1/portfolio/snapshot${q ? "?" + q : ""}`);
   },
-  weightConfig: ()               => request("GET",  "/portfolio/weight-config"),
-  riskSummary:  (commodity)      => request("GET",  `/portfolio/risk-summary${commodity ? "?commodity=" + commodity : ""}`),
-  get:          (entryId)        => request("GET",  `/portfolio/${entryId}`),
-  assemble:     (body)           => request("POST", "/portfolio", body),
+  weightConfig: ()               => request("GET",  "/api/v1/portfolio/weight-config"),
+  riskSummary:  (commodity)      => request("GET",  `/api/v1/portfolio/risk-summary${commodity ? "?commodity=" + commodity : ""}`),
+  get:          (entryId)        => request("GET",  `/api/v1/portfolio/${entryId}`),
+  assemble:     (body)           => request("POST", "/api/v1/portfolio", body),
 };
 
 // Ground Truth Admin
 export const groundTruth = {
   listRecords:    (params = {})        => {
     const q = new URLSearchParams(params).toString();
-    return request("GET", `/gt/records${q ? "?" + q : ""}`);
+    return request("GET", `/api/v1/gt/records${q ? "?" + q : ""}`);
   },
-  getRecord:      (recordId)           => request("GET",  `/gt/records/${recordId}`),
-  submitRecord:   (body)               => request("POST", "/gt/records", body),
-  approveRecord:  (recordId, reason)   => request("POST", `/gt/records/${recordId}/approve`, { reason }),
-  rejectRecord:   (recordId, reason)   => request("POST", `/gt/records/${recordId}/reject`,  { reason }),
-  recordHistory:  (recordId)           => request("GET",  `/gt/records/${recordId}/history`),
-  auditLog:       ()                   => request("GET",  "/gt/audit"),
-  calVersions:    ()                   => request("GET",  "/gt/calibration/versions"),
-  activateCal:    (versionId)          => request("POST", `/gt/calibration/versions/${versionId}/activate`),
-  revokeCal:      (versionId, reason)  => request("POST", `/gt/calibration/versions/${versionId}/revoke`, { reason }),
+  getRecord:      (recordId)           => request("GET",  `/api/v1/gt/records/${recordId}`),
+  submitRecord:   (body)               => request("POST", "/api/v1/gt/records", body),
+  approveRecord:  (recordId, reason)   => request("POST", `/api/v1/gt/records/${recordId}/approve`, { reason }),
+  rejectRecord:   (recordId, reason)   => request("POST", `/api/v1/gt/records/${recordId}/reject`,  { reason }),
+  recordHistory:  (recordId)           => request("GET",  `/api/v1/gt/records/${recordId}/history`),
+  auditLog:       ()                   => request("GET",  "/api/v1/gt/audit"),
+  calVersions:    ()                   => request("GET",  "/api/v1/gt/calibration/versions"),
+  activateCal:    (versionId)          => request("POST", `/api/v1/gt/calibration/versions/${versionId}/activate`),
+  revokeCal:      (versionId, reason)  => request("POST", `/api/v1/gt/calibration/versions/${versionId}/revoke`, { reason }),
 };
 
 // Canonical Export
@@ -171,14 +171,14 @@ export const canonicalExport = {
 
 // Data Room
 export const dataRoom = {
-  createPackage: (body)       => request("POST",   "/data-room/packages", body),
+  createPackage: (body)       => request("POST",   "/api/v1/data-room/packages", body),
   listPackages:  (params = {}) => {
     const q = new URLSearchParams(params).toString();
-    return request("GET", `/data-room/packages${q ? "?" + q : ""}`);
+    return request("GET", `/api/v1/data-room/packages${q ? "?" + q : ""}`);
   },
-  getPackage:    (packageId)  => request("GET",    `/data-room/packages/${packageId}`),
-  listArtifacts: (packageId)  => request("GET",    `/data-room/packages/${packageId}/artifacts`),
-  createLink:    (packageId, body) => request("POST", `/data-room/packages/${packageId}/links`, body),
-  revokeLink:    (linkId)     => request("DELETE",  `/data-room/links/${linkId}`),
-  listLinks:     (packageId)  => request("GET",    `/data-room/links${packageId ? "?package_id=" + packageId : ""}`),
+  getPackage:    (packageId)  => request("GET",    `/api/v1/data-room/packages/${packageId}`),
+  listArtifacts: (packageId)  => request("GET",    `/api/v1/data-room/packages/${packageId}/artifacts`),
+  createLink:    (packageId, body) => request("POST", `/api/v1/data-room/packages/${packageId}/links`, body),
+  revokeLink:    (linkId)     => request("DELETE",  `/api/v1/data-room/links/${linkId}`),
+  listLinks:     (packageId)  => request("GET",    `/api/v1/data-room/links${packageId ? "?package_id=" + packageId : ""}`),
 };
