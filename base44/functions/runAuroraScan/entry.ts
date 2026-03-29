@@ -14,7 +14,11 @@ Deno.serve(async (req) => {
     }
 
     // Get Aurora backend URL from environment with fallback
-    const auroraBackendUrl = (Deno.env.get('AURORA_BACKEND_URL') || '').trim() || 'https://api.aurora-osi.com';
+    let auroraBackendUrl = (Deno.env.get('AURORA_BACKEND_URL') || '').trim() || 'https://api.aurora-osi.com';
+    // Normalize: remove trailing slash and add protocol if missing
+    if (!auroraBackendUrl.startsWith('http://') && !auroraBackendUrl.startsWith('https://')) {
+      auroraBackendUrl = `https://${auroraBackendUrl}`;
+    }
     const normalizedUrl = auroraBackendUrl.replace(/\/$/, '');
 
     // Construct the scan request payload for Aurora backend
