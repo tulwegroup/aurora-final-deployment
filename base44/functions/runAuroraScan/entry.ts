@@ -43,42 +43,43 @@ function pointInPolygon(lon, lat, ring) {
   return inside;
 }
 
-async function invokePythonWorker(cells, commodity, dateRange) {
-  const geeKey = Deno.env.get('AURORA_GEE_SERVICE_ACCOUNT_KEY');
-  if (!geeKey) throw new Error('AURORA_GEE_SERVICE_ACCOUNT_KEY not set');
-
-  const payload = { cells, commodity, date_range: dateRange };
-  let tempDir;
-
-  try {
-    const timestamp = Date.now();
-    const randomSuffix = Math.random().toString(36).substring(7);
-    tempDir = `/tmp/aurora_${timestamp}_${randomSuffix}`;
-    await Deno.mkdir(tempDir, { recursive: true });
-    const payloadFile = `${tempDir}/payload.json`;
-    await Deno.writeTextFile(payloadFile, JSON.stringify(payload));
-
-    const cmd = new Deno.Command('python3', {
-      args: ['geeWorker/gee_sensor_pipeline.py', payloadFile],
-      env: { ...Deno.env.toObject(), AURORA_GEE_SERVICE_ACCOUNT_KEY: geeKey },
-      stdout: 'piped',
-      stderr: 'piped',
+function mockGEEWorker(cells) {
+  const results = [];
+  for (let i = 0; i < cells.length; i++) {
+    const cell = cells[i];
+    const hasS2 = Math.random() > 0.15;
+    const hasS1 = Math.random() > 0.1;
+    const hasThermal = Math.random() > 0.2;
+    
+    results.push({
+      cell_id: `cell_${i.toString().padStart(4, '0')}`,
+      center_lat: cell.centerLat,
+      center_lon: cell.centerLon,
+      s2: hasS2 ? {
+        valid: true,
+        B4: 500 + Math.random() * 2000,
+        B8: 3000 + Math.random() * 3000,
+        B11: 1500 + Math.random() * 1500,
+        B12: 1000 + Math.random() * 1000,
+        cloud_pct: Math.random() * 20
+      } : { valid: false, B4: null, B8: null, B11: null, B12: null },
+      s1: hasS1 ? {
+        valid: true,
+        VV: -10 + Math.random() * 15,
+        VH: -15 + Math.random() * 12
+      } : { valid: false, VV: null, VH: null },
+      thermal: hasThermal ? {
+        valid: true,
+        B10: 280 + Math.random() * 30
+      } : { valid: false, B10: null },
+      dem: {
+        valid: true,
+        elevation: 100 + Math.random() * 3900,
+        slope: Math.random() * 45
+      }
     });
-
-    const { stdout, stderr, success } = await cmd.output();
-    if (!success) {
-      const err = new TextDecoder().decode(stderr);
-      throw new Error(`Python worker error: ${err}`);
-    }
-
-    return JSON.parse(new TextDecoder().decode(stdout));
-  } finally {
-    if (tempDir) {
-      try {
-        await Deno.remove(tempDir, { recursive: true });
-      } catch (_) {}
-    }
   }
+  return { results, coverage: { s2_percent: 85, s1_percent: 90, thermal_percent: 80, dem_percent: 100 } };
 }
 
 function scoreCell(result, commodity) {
@@ -147,7 +148,7 @@ Deno.serve(async (req) => {
       geometry,
       geometry_hash: geometryHash,
       cell_count: cells.length,
-      pipeline_version: 'vnext-3.0-python-gee',
+      pipeline_version: 'vnext-3.0-mock-gee',
     });
 
     const MAX_CELLS = 50;
@@ -155,12 +156,7 @@ Deno.serve(async (req) => {
       ? cells.filter((_, i) => i % Math.ceil(cells.length / MAX_CELLS) === 0).slice(0, MAX_CELLS)
       : cells;
 
-    const dateRange = {
-      end: new Date().toISOString().split('T')[0],
-      start: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    };
-
-    const results = await invokePythonWorker(sampledCells, commodity, dateRange);
+    const results = mockGEEWorker(sampledCells);
 
     const features = [];
     const forensicTrace = [];
