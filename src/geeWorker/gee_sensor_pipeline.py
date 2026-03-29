@@ -53,21 +53,35 @@ def fetch_sentinel2(cell, date_range):
               .filterDate(date_range['start'], date_range['end'])
               .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20)))
         
-        if s2.size().getInfo() == 0:
+        size = s2.size().getInfo()
+        if size == 0:
+            sys.stderr.write(f"[S2-WARN] No images found for cell [{cell['centerLon']}, {cell['centerLat']}]\n")
             return {'valid': False, 'B4': None, 'B8': None, 'B11': None, 'B12': None, 'cloud_pct': 100}
         
-        composite = s2.median()
+        composite = s2.select(['B4', 'B8', 'B11', 'B12']).median()
         point = ee.Geometry.Point([cell['centerLon'], cell['centerLat']])
         sample = composite.sample(geometry=point, scale=20).first()
         
+        if sample is None:
+            sys.stderr.write(f"[S2-WARN] Sample returned None for cell [{cell['centerLon']}, {cell['centerLat']}]\n")
+            return {'valid': False, 'B4': None, 'B8': None, 'B11': None, 'B12': None, 'cloud_pct': None}
+        
         values = sample.getInfo()['properties']
+        b4 = values.get('B4')
+        b8 = values.get('B8')
+        b11 = values.get('B11')
+        b12 = values.get('B12')
+        
+        if None in [b4, b8, b11, b12]:
+            sys.stderr.write(f"[S2-WARN] Missing bands for cell [{cell['centerLon']}, {cell['centerLat']}]: B4={b4}, B8={b8}, B11={b11}, B12={b12}\n")
+            return {'valid': False, 'B4': b4, 'B8': b8, 'B11': b11, 'B12': b12, 'cloud_pct': None}
         
         return {
             'valid': True,
-            'B4': float(values.get('B4')),
-            'B8': float(values.get('B8')),
-            'B11': float(values.get('B11')),
-            'B12': float(values.get('B12')),
+            'B4': float(b4),
+            'B8': float(b8),
+            'B11': float(b11),
+            'B12': float(b12),
             'cloud_pct': 20,
         }
     except Exception as e:
@@ -83,21 +97,34 @@ def fetch_sentinel1(cell, date_range):
         s1 = (ee.ImageCollection('COPERNICUS/S1_GRD')
               .filterBounds(geometry)
               .filterDate(date_range['start'], date_range['end'])
-              .filter(ee.Filter.eq('instrumentMode', 'IW')))
+              .filter(ee.Filter.eq('instrumentMode', 'IW'))
+              .filter(ee.Filter.eq('orbitProperties_pass', 'DESCENDING')))
         
-        if s1.size().getInfo() == 0:
+        size = s1.size().getInfo()
+        if size == 0:
+            sys.stderr.write(f"[S1-WARN] No images found for cell [{cell['centerLon']}, {cell['centerLat']}]\n")
             return {'valid': False, 'VV': None, 'VH': None}
         
-        composite = s1.mean()
+        composite = s1.select(['VV', 'VH']).mean()
         point = ee.Geometry.Point([cell['centerLon'], cell['centerLat']])
         sample = composite.sample(geometry=point, scale=10).first()
         
+        if sample is None:
+            sys.stderr.write(f"[S1-WARN] Sample returned None for cell [{cell['centerLon']}, {cell['centerLat']}]\n")
+            return {'valid': False, 'VV': None, 'VH': None}
+        
         values = sample.getInfo()['properties']
+        vv = values.get('VV')
+        vh = values.get('VH')
+        
+        if None in [vv, vh]:
+            sys.stderr.write(f"[S1-WARN] Missing bands for cell [{cell['centerLon']}, {cell['centerLat']}]: VV={vv}, VH={vh}\n")
+            return {'valid': False, 'VV': vv, 'VH': vh}
         
         return {
             'valid': True,
-            'VV': float(values.get('VV')),
-            'VH': float(values.get('VH')),
+            'VV': float(vv),
+            'VH': float(vh),
         }
     except Exception as e:
         sys.stderr.write(f"[S1-ERROR] cell [{cell['centerLon']}, {cell['centerLat']}]: {str(e)}\n")
@@ -113,18 +140,29 @@ def fetch_landsat8_thermal(cell, date_range):
               .filterBounds(geometry)
               .filterDate(date_range['start'], date_range['end']))
         
-        if l8.size().getInfo() == 0:
+        size = l8.size().getInfo()
+        if size == 0:
+            sys.stderr.write(f"[L8-WARN] No images found for cell [{cell['centerLon']}, {cell['centerLat']}]\n")
             return {'valid': False, 'B10': None}
         
-        composite = l8.median()
+        composite = l8.select(['ST_B10']).median()
         point = ee.Geometry.Point([cell['centerLon'], cell['centerLat']])
         sample = composite.sample(geometry=point, scale=30).first()
         
+        if sample is None:
+            sys.stderr.write(f"[L8-WARN] Sample returned None for cell [{cell['centerLon']}, {cell['centerLat']}]\n")
+            return {'valid': False, 'B10': None}
+        
         values = sample.getInfo()['properties']
+        b10 = values.get('ST_B10')
+        
+        if b10 is None:
+            sys.stderr.write(f"[L8-WARN] Missing band for cell [{cell['centerLon']}, {cell['centerLat']}]: ST_B10={b10}\n")
+            return {'valid': False, 'B10': None}
         
         return {
             'valid': True,
-            'B10': float(values.get('ST_B10')),
+            'B10': float(b10),
         }
     except Exception as e:
         sys.stderr.write(f"[L8-ERROR] cell [{cell['centerLon']}, {cell['centerLat']}]: {str(e)}\n")
@@ -143,11 +181,19 @@ def fetch_dem_features(cell):
         elev_sample = dem.sample(geometry=point, scale=30).first()
         slope_sample = slope.sample(geometry=point, scale=30).first()
         
+        if elev_sample is None or slope_sample is None:
+            sys.stderr.write(f"[DEM-WARN] Sample returned None for cell [{cell['centerLon']}, {cell['centerLat']}]\n")
+            return {'valid': False, 'elevation': None, 'slope': None}
+        
         elev_vals = elev_sample.getInfo()['properties']
         slope_vals = slope_sample.getInfo()['properties']
         
         elevation = elev_vals.get('elevation')
         slope_val = slope_vals.get('slope')
+        
+        if elevation is None or slope_val is None:
+            sys.stderr.write(f"[DEM-WARN] Missing fields for cell [{cell['centerLon']}, {cell['centerLat']}]: elev={elevation}, slope={slope_val}\n")
+            return {'valid': False, 'elevation': elevation, 'slope': slope_val}
         
         return {
             'valid': elevation is not None and -100 < elevation < 9000,
