@@ -13,22 +13,8 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'geometry required' }, { status: 400 });
     }
 
-    // Get Aurora backend URL from environment
-    let auroraBackendUrl = Deno.env.get('AURORA_BACKEND_URL');
-    if (!auroraBackendUrl) {
-      return Response.json(
-        { error: 'AURORA_BACKEND_URL not configured' },
-        { status: 503 }
-      );
-    }
-
-    // Ensure URL has protocol
-    if (!auroraBackendUrl.startsWith('http://') && !auroraBackendUrl.startsWith('https://')) {
-      auroraBackendUrl = `https://${auroraBackendUrl}`;
-    }
-
-    // Remove trailing slash if present
-    auroraBackendUrl = auroraBackendUrl.replace(/\/$/, '');
+    // Use the same backend as auroraProxy
+    const auroraBackendUrl = 'https://api.aurora-osi.com';
 
     // Construct the scan request payload for Aurora backend
     const scanRequest = {
@@ -56,7 +42,7 @@ Deno.serve(async (req) => {
       console.error('[SCAN-BACKEND-ERROR]', response.status, errText);
       return Response.json(
         { error: `Aurora backend error: ${response.status}`, detail: errText },
-        { status: response.status }
+        { status: 500 }
       );
     }
 
