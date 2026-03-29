@@ -35,8 +35,10 @@ Deno.serve(async (req) => {
     data = await res.text();
   }
 
+  // Always return HTTP 200 so the browser fetch succeeds;
+  // callers read `ok` and `status` from the JSON body.
   return Response.json(
     { data, status: res.status, ok: res.ok },
-    { status: res.ok ? 200 : res.status }
+    { status: 200 }
   );
 });
