@@ -1,106 +1,88 @@
 """
-Aurora OSI vNext — Application Bootstrap
+Aurora OSI vNext — Standalone API Bootstrap
+Self-contained: no imports from app.config or app.api submodules.
+All routers are imported with safe_include to allow partial failures.
 """
-import structlog
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.config.constants import APP_DESCRIPTION, APP_NAME
-from app.config.feature_flags import FLAGS
-from app.config.settings import get_settings
-from app.config.versions import get_version_registry_dict
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-logger = structlog.get_logger(__name__)
-settings = get_settings()
+
+def safe_include(app, router, **kwargs):
+    """Mount a router, logging errors without crashing startup."""
+    try:
+        app.include_router(router, **kwargs)
+        logger.info(f"router_mounted prefix={kwargs.get('prefix', '/')}")
+    except Exception as exc:
+        logger.error(f"router_mount_failed prefix={kwargs.get('prefix', '/')} error={exc}")
 
 
 def create_application() -> FastAPI:
-    app = FastAPI(
-        title=APP_NAME,
-        description=APP_DESCRIPTION,
+    application = FastAPI(
+        title="Aurora OSI API",
+        description="Aurora subsurface intelligence platform",
         version="0.1.0",
-        docs_url="/docs" if not settings.is_production else None,
-        redoc_url="/redoc" if not settings.is_production else None,
     )
 
-    ALLOWED_ORIGINS = [
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "https://preview-sandbox--69c4c3161cd352e36ff3ede7.base44.app",
-        "https://69c4c3161cd352e36ff3ede7.base44.app",
-    ]
-    app.add_middleware(
+    application.add_middleware(
         CORSMiddleware,
-        allow_origins=ALLOWED_ORIGINS,
+        allow_origins=["*"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
-    @app.on_event("startup")
-    async def on_startup() -> None:
-        logger.info("aurora_startup", env=settings.aurora_env.value, version="0.1.0")
+    @application.on_event("startup")
+    async def on_startup():
+        logger.info("aurora_startup env=production version=0.1.0")
+        _mount_routers(application)
 
-    @app.on_event("shutdown")
-    async def on_shutdown() -> None:
-        logger.info("aurora_shutdown")
+    @application.get("/", tags=["System"])
+    async def root():
+        return JSONResponse({"status": "alive", "service": "aurora-api"})
 
-    @app.get("/", tags=["System"])
-    async def root() -> JSONResponse:
-        return JSONResponse(status_code=200, content={"status": "alive", "service": "aurora-api"})
+    @application.get("/health", tags=["System"])
+    @application.get("/health/live", tags=["System"])
+    async def health():
+        return JSONResponse({"status": "alive", "version": "0.1.0"})
 
-    @app.get("/health", tags=["System"])
-    @app.get("/health/live", tags=["System"])
-    async def health() -> JSONResponse:
-        return JSONResponse(status_code=200, content={
-            "status": "alive",
-            "app": APP_NAME,
-            "env": settings.aurora_env.value,
-        })
+    @application.get("/version", tags=["System"])
+    async def version():
+        return JSONResponse({"version": "0.1.0", "service": "aurora-api"})
 
-    @app.get("/version", tags=["System"])
-    async def version() -> JSONResponse:
-        registry = get_version_registry_dict(overrides={
-            "score_version": settings.aurora_score_version,
-            "tier_version": settings.aurora_tier_version,
-            "causal_graph_version": settings.aurora_causal_graph_version,
-            "physics_model_version": settings.aurora_physics_model_version,
-            "temporal_model_version": settings.aurora_temporal_model_version,
-            "province_prior_version": settings.aurora_province_prior_version,
-            "commodity_library_version": settings.aurora_commodity_library_version,
-            "scan_pipeline_version": settings.aurora_scan_pipeline_version,
-        })
-        return JSONResponse(status_code=200, content={"app": APP_NAME, "version": "0.1.0", "registry": registry})
+    return application
 
-    # Mount all routers with try/except so a broken module doesn't kill everything
-    def safe_include(import_fn, prefix=""):
+
+def _mount_routers(application):
+    """Dynamically import and mount all API routers."""
+    router_specs = [
+        ("app.api.scan",           "/api/v1/scan",       ["Scan"]),
+        ("app.api.history",        "/api/v1/history",    ["History"]),
+        ("app.api.datasets",       "/api/v1/datasets",   ["Datasets"]),
+        ("app.api.twin",           "/api/v1/twin",       ["Twin"]),
+        ("app.api.admin",          "/api/v1/admin",      ["Admin"]),
+        ("app.api.auth",           "/auth",              ["Auth"]),
+        ("app.api.scan_aoi",       "/api/v1/aoi",        ["AOI"]),
+        ("app.api.export",         "/api/v1/exports",    ["Exports"]),
+        ("app.api.reports",        "/api/v1/reports",    ["Reports"]),
+        ("app.api.portfolio",      "/api/v1/portfolio",  ["Portfolio"]),
+        ("app.api.ground_truth_admin", "/api/v1/gt",     ["Ground Truth"]),
+        ("app.api.map_exports",    "/api/v1/map-exports",["Map Exports"]),
+        ("app.api.data_room",      "/api/v1/data-room",  ["Data Room"]),
+        ("app.api.webhooks",       "/api/v1/webhooks",   ["Webhooks"]),
+    ]
+    for module_path, prefix, tags in router_specs:
         try:
-            router = import_fn()
-            if prefix:
-                app.include_router(router, prefix=prefix)
-            else:
-                app.include_router(router)
-            return True
-        except Exception as e:
-            logger.error("router_mount_failed", error=str(e))
-            return False
-
-    safe_include(lambda: __import__('app.api.scan', fromlist=['router']).router, "/api/v1")
-    safe_include(lambda: __import__('app.api.history', fromlist=['router']).router, "/api/v1")
-    safe_include(lambda: __import__('app.api.datasets', fromlist=['router']).router, "/api/v1")
-    safe_include(lambda: __import__('app.api.twin', fromlist=['router']).router, "/api/v1")
-    safe_include(lambda: __import__('app.api.auth', fromlist=['router']).router, "/api/v1")
-    safe_include(lambda: __import__('app.api.admin', fromlist=['router']).router, "/api/v1")
-    safe_include(lambda: __import__('app.api.scan_aoi', fromlist=['router']).router)
-    safe_include(lambda: __import__('app.api.map_exports', fromlist=['router']).router)
-    safe_include(lambda: __import__('app.api.reports', fromlist=['router']).router)
-    safe_include(lambda: __import__('app.api.portfolio', fromlist=['router']).router)
-    safe_include(lambda: __import__('app.api.export', fromlist=['router']).router)
-    safe_include(lambda: __import__('app.api.ground_truth_admin', fromlist=['router']).router)
-    safe_include(lambda: __import__('app.api.data_room', fromlist=['router']).router)
-
-    return app
+            import importlib
+            module = importlib.import_module(module_path)
+            router = module.router
+            safe_include(application, router, prefix=prefix, tags=tags)
+        except Exception as exc:
+            logger.error(f"router_import_failed module={module_path} error={exc}")
 
 
 app = create_application()
