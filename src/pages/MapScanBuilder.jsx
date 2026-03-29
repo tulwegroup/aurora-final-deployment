@@ -18,7 +18,6 @@
 import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { aoi as aoiApi } from "../lib/auroraApi";
-import { base44 } from '@/api/base44Client';
 import MapDrawTool from "../components/MapDrawTool";
 import AOIPreviewPanel from "../components/AOIPreviewPanel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -105,17 +104,15 @@ export default function MapScanBuilder() {
   }
 
   async function submitScan() {
-    if (!geometry) return;
+    if (!savedAOI?.aoi_id) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await base44.functions.invoke('runAuroraScan', {
-        geometry,
+      const res = await aoiApi.submitScan(savedAOI.aoi_id, {
         commodity,
         resolution,
-        aoi_id: savedAOI?.aoi_id || null,
       });
-      setSubmitted(res.data);
+      setSubmitted(res);
       setStep(3);
     } catch (e) {
       setError(e.message);

@@ -53,6 +53,7 @@ Deno.serve(async (req) => {
     }
 
     const result = await response.json();
+    console.log('[runAuroraScan] Response data:', JSON.stringify(result, null, 2));
 
     // Return scan submission response to frontend
     return Response.json({
