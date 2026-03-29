@@ -44,28 +44,7 @@ from app.models.extraction_types import (
     RawSARStack,
     RawThermalStack,
 )
-
-
-# ---------------------------------------------------------------------------
-# Mission-specific spectral band → canonical observable key mappings
-# ---------------------------------------------------------------------------
-
-MISSION_BAND_MAP: dict[str, dict[str, str]] = {
-    "Sentinel-2": {
-        "x_spec_1": "B2",   # Blue    490 nm
-        "x_spec_2": "B3",   # Green   560 nm
-        "x_spec_3": "B4",   # Red     665 nm
-        "x_spec_4": "B5",   # RE1     705 nm
-        "x_spec_5": "B8",   # NIR     842 nm
-        "x_spec_6": "B8A",  # NIRn    865 nm
-        "x_spec_7": "B11",  # SWIR1  1610 nm
-        "x_spec_8": "B12",  # SWIR2  2190 nm
-    },
-    "Landsat-9": {
-        "x_spec_1": "B2",   # Blue    482 nm
-        "x_spec_2": "B3",   # Green   562 nm
-        "x_spec_3": "B4",   # Red     655 nm
-        "x_spec_4": "B5",   # NIR     865 nm (no red-edge — duplicated)
+from app.services.spectral_extraction import extract_spectral_indices_from_s2_bands
         "x_spec_5": "B5",   # NIR     865 nm
         "x_spec_6": "B5",   # NIRn    865 nm (no equivalent)
         "x_spec_7": "B6",   # SWIR1  1610 nm
@@ -112,28 +91,31 @@ assert len(CANONICAL_KEYS) == 42
 # ---------------------------------------------------------------------------
 
 def translate_optical(stack: RawOpticalStack) -> dict[str, Optional[float]]:
-    """Map mission-specific optical bands to canonical x_spec_* keys."""
+    """
+    Map mission-specific optical bands to canonical x_spec_* keys.
+    
+    CONSTITUTIONAL BRIDGE: For Sentinel-2, extract spectral indices from raw bands.
+    For other missions, use mission-specific band mappings only.
+    """
     result: dict[str, Optional[float]] = {}
-    mission_map = MISSION_BAND_MAP.get(stack.mission, {})
-    for obs_key, band_name in mission_map.items():
-        if obs_key.startswith("x_spec_"):
-            result[obs_key] = stack.band_values.get(band_name)
-    return result
-
-
-def translate_sar(stack: RawSARStack) -> dict[str, Optional[float]]:
-    """Map SAR observations to canonical x_sar_* keys."""
-    result: dict[str, Optional[float]] = {
-        "x_sar_1": None, "x_sar_2": None, "x_sar_3": None,
-        "x_sar_4": None, "x_sar_5": None, "x_sar_6": None,
-    }
-    pol = stack.polarisation
-    if pol in ("VV", "HH"):
-        result["x_sar_1"] = stack.backscatter_vv
-    if pol in ("VH", "HV"):
-        result["x_sar_2"] = stack.backscatter_vh
-    result["x_sar_3"] = stack.coherence
-    result["x_sar_4"] = stack.incidence_angle_deg
+    
+    # Sentinel-2: extract spectral indices (clay, ferric, NDVI, etc.) from raw bands
+    if stack.mission == "Sentinel-2":
+        b4 = stack.band_values.get("B4")
+        b8 = stack.band_values.get("B8")
+        b11 = stack.band_values.get("B11")
+        b12 = stack.band_values.get("B12")
+        
+        indices = extract_spectral_indices_from_s2_bands(b4, b8, b11, b12)
+        for key, val in indices.items():
+            result[key] = val
+    else:
+        # Other missions: use mission-specific band mappings only
+        mission_map = MISSION_BAND_MAP.get(stack.mission, {})
+        for obs_key, band_name in mission_map.items():
+            if obs_key.startswith("x_spec_"):
+                result[obs_key] = stack.band_values.get(band_name)
+    
     return result
 
 
