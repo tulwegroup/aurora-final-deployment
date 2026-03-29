@@ -2,13 +2,15 @@
  * EndpointTestDashboard — Consolidated endpoint testing suite
  * Tests all critical Aurora API routes with live results
  */
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { CheckCircle, XCircle, Loader2, Play } from 'lucide-react';
 
-const API_BASE = 'https://api.aurora-osi.com';
+// All requests go through auroraProxy to avoid browser CORS issues
+const AURORA_BASE = 'https://api.aurora-osi.com';
 
 const CRITICAL_ENDPOINTS = [
   { group: 'Health', path: '/health', method: 'GET', label: 'Root health' },
@@ -36,31 +38,19 @@ export default function EndpointTestDashboard() {
   const [token, setToken] = useState('');
 
   const testEndpoint = async (ep) => {
+    const start = Date.now();
     try {
-      const headers = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      const start = Date.now();
-      const res = await fetch(`${API_BASE}${ep.path}`, { method: ep.method, headers });
+      const res = await base44.functions.invoke('auroraProxy', {
+        method: ep.method,
+        path: ep.path,
+        token: token || null,
+      });
       const elapsed = Date.now() - start;
-
-      let body = '';
-      try {
-        const text = await res.text();
-        body = text.substring(0, 200);
-      } catch (e) {
-        body = '';
-      }
-
-      setResults(prev => ({
-        ...prev,
-        [ep.path]: { status: res.status, elapsed, body, ok: res.ok },
-      }));
+      const { data, status, ok } = res.data;
+      const body = typeof data === 'string' ? data.substring(0, 200) : JSON.stringify(data).substring(0, 200);
+      setResults(prev => ({ ...prev, [ep.path]: { status, elapsed, body, ok } }));
     } catch (e) {
-      setResults(prev => ({
-        ...prev,
-        [ep.path]: { status: 0, elapsed: 0, error: e.message, ok: false },
-      }));
+      setResults(prev => ({ ...prev, [ep.path]: { status: 0, elapsed: Date.now() - start, error: e.message, ok: false } }));
     }
   };
 
@@ -82,7 +72,7 @@ export default function EndpointTestDashboard() {
         <h1 className="text-3xl font-bold">Endpoint Test Dashboard</h1>
         <p className="text-muted-foreground">
           Test all critical Aurora API endpoints against{' '}
-          <span className="font-mono text-sm">{API_BASE}</span>
+          <span className="font-mono text-sm">{AURORA_BASE}</span>
         </p>
       </div>
 
@@ -184,7 +174,7 @@ export default function EndpointTestDashboard() {
       <Card className="bg-slate-950 text-slate-300 border-0">
         <CardContent className="pt-4 font-mono text-xs space-y-1">
           <p className="text-slate-500">// Aurora API Configuration</p>
-          <p>BASE_URL = "<span className="text-green-400">{API_BASE}</span>"</p>
+          <p>BASE_URL = "<span className="text-green-400">{AURORA_BASE}</span>" (via server-side proxy)</p>
           <p>VERSION = "<span className="text-blue-400">v1</span>"</p>
           <p>PROTOCOL = "<span className="text-green-400">HTTPS</span>"</p>
           <p>ENDPOINTS_TESTED = {CRITICAL_ENDPOINTS.length}</p>

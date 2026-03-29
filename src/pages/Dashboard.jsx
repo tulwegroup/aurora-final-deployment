@@ -4,7 +4,6 @@
 import { useEffect, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
-import { scans } from "../lib/auroraApi";
 import { ScanStatusBadge } from "../components/ScanStatusBadge";
 import MissingValue from "../components/MissingValue";
 import { Card, CardContent } from "@/components/ui/card";
@@ -37,8 +36,9 @@ export default function Dashboard() {
     setLoading(true);
     setError(null);
     try {
-      const data = await scans.active();
-      setActive(data);
+      const res = await base44.functions.invoke('auroraProxy', { method: 'GET', path: '/api/v1/scan/active' });
+      if (!res.data.ok) throw new Error(`API error ${res.data.status}`);
+      setActive(res.data.data);
     } catch (e) {
       setError(e.message);
     } finally {

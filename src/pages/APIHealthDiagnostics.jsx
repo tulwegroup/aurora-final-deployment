@@ -2,13 +2,18 @@
  * APIHealthDiagnostics — Real-time API health & connectivity troubleshooting
  */
 import { useState, useEffect } from 'react';
+import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AlertCircle, CheckCircle, Loader2, RefreshCw, Activity, Network, Database } from 'lucide-react';
 
-const API_BASE = 'https://api.aurora-osi.com';
+// All requests route through auroraProxy (server-side) to avoid CORS
+async function proxyFetch(path, method = 'GET') {
+  const res = await base44.functions.invoke('auroraProxy', { method, path });
+  return res.data; // { data, status, ok }
+}
 
 export default function APIHealthDiagnostics() {
   const [liveness, setLiveness] = useState(null);
@@ -22,46 +27,35 @@ export default function APIHealthDiagnostics() {
   const runFullDiagnostics = async () => {
     setLoading(true);
     try {
-      // 1. Liveness
-      const liveRes = await fetch(`${API_BASE}/health`);
-      setLiveness(liveRes.ok ? await liveRes.json() : { error: 'Failed to reach liveness' });
+      // 1. Liveness + Readiness + Dependencies — all from /health
+      const healthResult = await proxyFetch('/health');
+      const healthData = healthResult.ok ? healthResult.data : { error: `HTTP ${healthResult.status}` };
+      setLiveness(healthData);
+      setReadiness(healthData);
+      setDependencies(healthData);
 
-      // 2. Readiness
-      const readyRes = await fetch(`${API_BASE}/health`);
-      setReadiness(readyRes.ok ? await readyRes.json() : { error: 'Failed to reach readiness' });
+      // 2. Routes
+      const routesResult = await proxyFetch('/api/v1/admin/routes');
+      setRoutes(routesResult.ok ? routesResult.data : { error: `HTTP ${routesResult.status}` });
 
-      // 3. Dependencies
-      const depsRes = await fetch(`${API_BASE}/health`);
-      setDependencies(depsRes.ok ? await depsRes.json() : { error: 'Failed to reach dependencies' });
+      // 3. Network diagnostics
+      const netResult = await proxyFetch('/api/v1/admin/diagnostics');
+      setNetworkDiags(netResult.ok ? netResult.data : { error: `HTTP ${netResult.status}` });
 
-      // 4. Routes
-      const routesRes = await fetch(`${API_BASE}/api/v1/admin/routes`);
-      setRoutes(routesRes.ok ? await routesRes.json() : { error: 'Failed to fetch routes' });
-
-      // 5. Network diagnostics
-      const netRes = await fetch(`${API_BASE}/api/v1/admin/diagnostics`);
-      setNetworkDiags(netRes.ok ? await netRes.json() : { error: 'Failed to fetch network diagnostics' });
-
-      // 6. Test key endpoints
+      // 4. Test key endpoints via proxy
       const endpointsToTest = [
+        '/health',
         '/api/v1/history',
-        '/api/v1/discover/routes',
-        '/api/v1/health/live',
+        '/api/v1/scan/active',
+        '/api/v1/data-room/packages',
+        '/api/v1/gt/records',
       ];
-
       for (const ep of endpointsToTest) {
-        try {
-          const res = await fetch(`${API_BASE}${ep}`);
-          setEndpointStatus(prev => ({
-            ...prev,
-            [ep]: { status: res.ok ? 'reachable' : 'unreachable', code: res.status },
-          }));
-        } catch (e) {
-          setEndpointStatus(prev => ({
-            ...prev,
-            [ep]: { status: 'unreachable', error: e.message },
-          }));
-        }
+        const r = await proxyFetch(ep);
+        setEndpointStatus(prev => ({
+          ...prev,
+          [ep]: { status: r.ok ? 'reachable' : 'unreachable', code: r.status },
+        }));
       }
     } catch (error) {
       console.error('Diagnostics error:', error);
