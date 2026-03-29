@@ -16,7 +16,7 @@
  *   - aoi_id + geometry_hash carried through to scan reference.
  */
 import { useState, useCallback } from "react";
-import { base44 } from "@/api/base44Client";
+import { aoi as aoiApi } from "../lib/auroraApi";
 import MapDrawTool from "../components/MapDrawTool";
 import AOIPreviewPanel from "../components/AOIPreviewPanel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -70,8 +70,7 @@ export default function MapScanBuilder() {
     setError(null);
     try {
       // Step 1: validate
-      const valRes = await base44.functions.invoke("aoiValidate", { geometry });
-      const val = valRes.data;
+      const val = await aoiApi.validate(geometry);
       setValidation(val);
 
       if (!val.valid) {
@@ -81,17 +80,16 @@ export default function MapScanBuilder() {
       }
 
       // Step 2: save AOI
-      const saveRes = await base44.functions.invoke("aoiSave", {
+      const savedAoi = await aoiApi.save({
         geometry,
         geometry_type: "polygon",
         source_type: "drawn",
       });
-      const aoi = saveRes.data;
-      setSavedAOI(aoi);
+      setSavedAOI(savedAoi);
 
       // Step 3: get workload estimate
-      const estRes = await base44.functions.invoke("aoiEstimate", { aoi_id: aoi.aoi_id });
-      setEstimate(estRes.data);
+      const est = await aoiApi.estimate(savedAoi.aoi_id);
+      setEstimate(est);
 
       setStep(2);
     } catch (e) {
@@ -106,12 +104,8 @@ export default function MapScanBuilder() {
     setLoading(true);
     setError(null);
     try {
-      const res = await base44.functions.invoke("aoiSubmitScan", {
-        aoi_id: savedAOI.aoi_id,
-        commodity,
-        resolution,
-      });
-      setSubmitted(res.data);
+      const res = await aoiApi.submitScan(savedAOI.aoi_id, { commodity, resolution });
+      setSubmitted(res);
       setStep(3);
     } catch (e) {
       setError(e.message);
