@@ -51,7 +51,10 @@ async function invokePythonWorker(cells, commodity, dateRange) {
   let tempDir;
 
   try {
-    tempDir = await Deno.makeTempDir({ prefix: 'aurora_' });
+    const timestamp = Date.now();
+    const randomSuffix = Math.random().toString(36).substring(7);
+    tempDir = `/tmp/aurora_${timestamp}_${randomSuffix}`;
+    await Deno.mkdir(tempDir, { recursive: true });
     const payloadFile = `${tempDir}/payload.json`;
     await Deno.writeTextFile(payloadFile, JSON.stringify(payload));
 
@@ -70,7 +73,11 @@ async function invokePythonWorker(cells, commodity, dateRange) {
 
     return JSON.parse(new TextDecoder().decode(stdout));
   } finally {
-    if (tempDir) await Deno.remove(tempDir, { recursive: true }).catch(() => {});
+    if (tempDir) {
+      try {
+        await Deno.remove(tempDir, { recursive: true });
+      } catch (_) {}
+    }
   }
 }
 
