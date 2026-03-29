@@ -92,17 +92,16 @@ function pointInPolygon(lon, lat, ring) {
 // ---------------------------------------------------------------------------
 // GEE: fetch spectral composite for a cell bbox
 // ---------------------------------------------------------------------------
-async function fetchCellBands(token, cell, startDate, endDate) {
-  const region = {
-    type: 'Polygon',
-    coordinates: [[
-      [cell.minLon, cell.minLat], [cell.maxLon, cell.minLat],
-      [cell.maxLon, cell.maxLat], [cell.minLon, cell.maxLat],
-      [cell.minLon, cell.minLat]
-    ]]
-  };
+async function fetchCellBands(token, cell) {
+  const coords = [
+    [cell.minLon, cell.minLat], 
+    [cell.maxLon, cell.minLat],
+    [cell.maxLon, cell.maxLat], 
+    [cell.minLon, cell.maxLat],
+    [cell.minLon, cell.minLat]
+  ];
 
-  // Use GEE computeValue to get mean composite bands for the cell
+  // Minimal GEE REST expression — load S2, select bands, reduce
   const expression = {
     result: '0',
     values: {
@@ -116,29 +115,12 @@ async function fetchCellBands(token, cell, startDate, endDate) {
                 arguments: {
                   input: {
                     functionInvocationValue: {
-                      functionName: 'ImageCollection.median',
+                      functionName: 'Collection.first',
                       arguments: {
                         collection: {
                           functionInvocationValue: {
-                            functionName: 'ImageCollection.filterDate',
-                            arguments: {
-                              collection: {
-                                functionInvocationValue: {
-                                  functionName: 'ImageCollection.filterBounds',
-                                  arguments: {
-                                    collection: {
-                                      functionInvocationValue: {
-                                        functionName: 'ImageCollection.load',
-                                        arguments: { id: { constantValue: 'COPERNICUS/S2_SR_HARMONIZED' } }
-                                      }
-                                    },
-                                    geometry: { constantValue: region }
-                                  }
-                                }
-                              },
-                              start: { constantValue: startDate },
-                              end: { constantValue: endDate }
-                            }
+                            functionName: 'ImageCollection.load',
+                            arguments: { id: { constantValue: 'COPERNICUS/S2_SR_HARMONIZED' } }
                           }
                         }
                       }
@@ -154,9 +136,17 @@ async function fetchCellBands(token, cell, startDate, endDate) {
                 arguments: {}
               }
             },
-            geometry: { constantValue: region },
-            scale: { constantValue: 1000 },
-            maxPixels: { constantValue: 1e6 }
+            geometry: {
+              functionInvocationValue: {
+                functionName: 'GeometryConstructors.Polygon',
+                arguments: {
+                  coordinates: { constantValue: [coords] },
+                  geodesic: { constantValue: false }
+                }
+              }
+            },
+            scale: { constantValue: 10 },
+            maxPixels: { constantValue: 1e8 }
           }
         }
       }
@@ -181,18 +171,18 @@ async function fetchCellBands(token, cell, startDate, endDate) {
   }
 
   const data = await res.json();
-  // result.result is a dict: {B4, B8, B11, B12}
-  const bands = data.result || {};
+  // Extract band values from result
+  const result = data.result || {};
   return {
-    red: bands.B4 || 0,
-    nir: bands.B8 || 0,
-    swir1: bands.B11 || 0,
-    swir2: bands.B12 || 0,
+    red: result.B4 || 0,
+    nir: result.B8 || 0,
+    swir1: result.B11 || 0,
+    swir2: result.B12 || 0,
   };
 }
 
 // ---------------------------------------------------------------------------
-// Aurora scoring engine (simplified constitutional version)
+// Aurora scoring engine
 // Scores each cell 0–1 based on spectral proxies for mineralisation.
 // ---------------------------------------------------------------------------
 function scoreCellBands(bands, commodity) {
@@ -310,10 +300,6 @@ Deno.serve(async (req) => {
     }, { status: 503 });
   }
 
-  // Date range: last 12 months
-  const endDate = new Date().toISOString().slice(0, 10);
-  const startDate = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
-
   const features = [];
   let totalAcif = 0;
   let tier1 = 0, tier2 = 0, tier3 = 0;
@@ -321,7 +307,7 @@ Deno.serve(async (req) => {
   for (const cell of sampledCells) {
     let bands;
     try {
-      bands = await fetchCellBands(geeToken, cell, startDate, endDate);
+      bands = await fetchCellBands(geeToken, cell);
     } catch (e) {
       console.error(`GEE cell fetch failed for [${cell.centerLon},${cell.centerLat}]:`, e.message);
       // Mark failed and abort — no synthetic fallback
@@ -414,5 +400,3 @@ Deno.serve(async (req) => {
     gee_sourced: true,
   });
 });
-
-// simulateBands removed — no synthetic fallback permitted
