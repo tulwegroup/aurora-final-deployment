@@ -87,9 +87,11 @@ export default function MapScanBuilder() {
       });
       setSavedAOI(savedAoi);
 
-      // Step 3: get workload estimate
-      const est = await aoiApi.estimate(savedAoi.aoi_id);
-      setEstimate(est);
+      // Step 3: get workload estimate (best-effort, not blocking)
+      try {
+        const est = await aoiApi.estimate(savedAoi.aoi_id);
+        setEstimate(est);
+      } catch {}
 
       setStep(2);
     } catch (e) {
