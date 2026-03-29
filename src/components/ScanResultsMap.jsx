@@ -43,22 +43,40 @@ export default function ScanResultsMap({ geojson, geometry }) {
           const tier = feat.properties?.tier || 3;
           const acif = feat.properties?.acif_score ?? 0;
           const color = TIER_COLORS[tier] || '#6b7280';
-          const coords = feat.geometry.coordinates[0].map(([lon, lat]) => [lat, lon]);
-          const poly = L.polygon(coords, {
-            color: '#1e293b', weight: 0.5,
-            fillColor: color, fillOpacity: 0.6,
-          });
-          poly.bindTooltip(
-            `<div class="text-xs space-y-0.5">
-              <div><b>Tier ${tier}</b></div>
-              <div>ACIF: ${(acif * 100).toFixed(1)}%</div>
-              <div>Clay: ${((feat.properties?.clay_index ?? 0) * 100).toFixed(1)}%</div>
-              <div>Ferric: ${((feat.properties?.ferric_ratio ?? 0) * 100).toFixed(1)}%</div>
-              <div class="text-slate-400">${feat.properties?.source || ''}</div>
-            </div>`,
-            { sticky: true }
-          );
-          cellLayers.addLayer(poly);
+          const geomType = feat.geometry.type;
+          const coords = feat.geometry.coordinates;
+          let layer;
+
+          if (geomType === 'Point') {
+            const [lon, lat] = coords;
+            layer = L.circleMarker([lat, lon], {
+              radius: 4,
+              color: '#1e293b',
+              weight: 1,
+              fillColor: color,
+              fillOpacity: 0.7,
+            });
+          } else if (geomType === 'Polygon') {
+            const ring = coords[0].map(([lon, lat]) => [lat, lon]);
+            layer = L.polygon(ring, {
+              color: '#1e293b', weight: 0.5,
+              fillColor: color, fillOpacity: 0.6,
+            });
+          }
+
+          if (layer) {
+            layer.bindTooltip(
+              `<div class="text-xs space-y-0.5">
+                <div><b>Tier ${tier}</b></div>
+                <div>ACIF: ${(acif * 100).toFixed(1)}%</div>
+                <div>Clay: ${((feat.properties?.clay_index ?? 0) * 100).toFixed(1)}%</div>
+                <div>Ferric: ${((feat.properties?.ferric_ratio ?? 0) * 100).toFixed(1)}%</div>
+                <div class="text-slate-400">${feat.properties?.source || ''}</div>
+              </div>`,
+              { sticky: true }
+            );
+            cellLayers.addLayer(layer);
+          }
         }
         cellLayers.addTo(map);
         layers.push(cellLayers);
