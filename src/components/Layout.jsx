@@ -89,7 +89,7 @@ export default function Layout() {
 
   const visibleSections = NAV_SECTIONS.map(section => ({
     ...section,
-    items: section.items.filter(item => !user || item.roles.includes(user.role)),
+    items: section.items.filter(item => !user || !user.role || item.roles.includes(user.role)),
   })).filter(s => s.items.length > 0);
 
   return (

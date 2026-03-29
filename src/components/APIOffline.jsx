@@ -26,7 +26,7 @@ export default function APIOffline({ error, endpoint, onRetry, hint }) {
             )}
             <p className="text-xs text-amber-700">
               {hint || (isNotFound
-                ? "This API route exists in the FastAPI spec but the router is not yet mounted in main.py."
+                ? "This endpoint returned 404. The API is live — check the proxy path or auth headers."
                 : isNetwork
                 ? "The Aurora API container may be starting up or DNS is not resolving."
                 : error)}
