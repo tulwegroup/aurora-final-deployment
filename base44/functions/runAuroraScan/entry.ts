@@ -84,7 +84,17 @@ async function fetchCellBands(token, cell) {
     [cell.minLon, cell.minLat]
   ];
 
-  // GEE REST API: Use Landsat-8 with proven simple expression
+  // GEE REST API: Direct Landsat-8 query via reduceRegion
+  const geometry_poly = {
+    functionInvocationValue: {
+      functionName: 'GeometryConstructors.Polygon',
+      arguments: {
+        coordinates: { constantValue: [coords] },
+        geodesic: { constantValue: false }
+      }
+    }
+  };
+
   const expression = {
     result: '0',
     values: {
@@ -320,10 +330,14 @@ Deno.serve(async (req) => {
   }
 
   const features = [];
+  const forensicTrace = [];
   let totalAcif = 0;
   let tier1 = 0, tier2 = 0, tier3 = 0;
   let scoredCells = 0;
   let missingDataCells = 0;
+  let nullSpectralCells = 0;
+  let nullSARCells = 0;
+  let nullThermalCells = 0;
 
   for (const cell of sampledCells) {
     let bands;
@@ -377,6 +391,25 @@ Deno.serve(async (req) => {
     if (scores.tier === 'TIER_1') tier1++;
     else if (scores.tier === 'TIER_2') tier2++;
     else tier3++;
+    
+    // Track null observables for data-quality summary
+    if (bands.raw_B4 === null || bands.raw_B5 === null || bands.raw_B6 === null || bands.raw_B7 === null) nullSpectralCells++;
+    if (scores.sarCoherence === null) nullSARCells++;
+    if (scores.thermalFlux === null) nullThermalCells++;
+    
+    // Collect first 10 cells for forensic trace
+    if (forensicTrace.length < 10) {
+      forensicTrace.push({
+        cell_id: `cell_${String(features.length).padStart(4, '0')}`,
+        geometry: { minLon: cell.minLon, maxLon: cell.maxLon, minLat: cell.minLat, maxLat: cell.maxLat, centerLon: cell.centerLon, centerLat: cell.centerLat },
+        raw_spectral: { B4: bands.raw_B4, B5: bands.raw_B5, B6: bands.raw_B6, B7: bands.raw_B7 },
+        normalized: { ndvi_norm: Math.max(0, 1 - Math.abs(scores.ndvi)), cai_norm: Math.max(0, Math.min(1, (scores.clayIndex - 0.3) / 0.4)), ioi_norm: Math.max(0, Math.min(1, (scores.ironIndex - 0.5) / 1.0)) },
+        modality_scores: { spectral: scores.ndvi, clay: scores.clayIndex, iron: scores.ironIndex, sar: scores.sarCoherence, thermal: scores.thermalFlux },
+        final_acif: Math.round(scores.acif * 10000) / 10000,
+        final_tier: scores.tier,
+        gates_passed: scores.gatesPassed,
+      });
+    }
 
     features.push({
       type: 'Feature',
@@ -416,6 +449,8 @@ Deno.serve(async (req) => {
   }
 
   const displayAcif = scoredCells > 0 ? totalAcif / scoredCells : null;
+  const scoreabilityRatio = sampledCells.length > 0 ? (scoredCells / sampledCells.length) : 0;
+  
   const resultsGeojson = {
     type: 'FeatureCollection',
     features,
@@ -428,9 +463,14 @@ Deno.serve(async (req) => {
       sampled_cells: sampledCells.length,
       scored_cells: scoredCells,
       missing_data_cells: missingDataCells,
+      null_spectral_cells: nullSpectralCells,
+      null_sar_cells: nullSARCells,
+      null_thermal_cells: nullThermalCells,
+      scoreability_ratio: Math.round(scoreabilityRatio * 10000) / 10000,
       gee_sourced: true,
       pipeline_version: 'vnext-1.0',
       completed_at: new Date().toISOString(),
+      forensic_10_cell_trace: forensicTrace,
     }
   };
 
@@ -458,10 +498,15 @@ Deno.serve(async (req) => {
     sampled_cells: sampledCells.length,
     scored_cells: scoredCells,
     missing_data_cells: missingDataCells,
+    null_spectral_cells: nullSpectralCells,
+    null_sar_cells: nullSARCells,
+    null_thermal_cells: nullThermalCells,
+    scoreability_ratio: Math.round(scoreabilityRatio * 10000) / 10000,
     display_acif_score: displayAcif !== null ? Math.round(displayAcif * 10000) / 10000 : null,
     tier_1_count: tier1,
     tier_2_count: tier2,
     tier_3_count: tier3,
     gee_sourced: true,
+    forensic_10_cell_trace: forensicTrace,
   });
 });

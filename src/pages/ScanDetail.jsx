@@ -64,6 +64,7 @@ export default function ScanDetail() {
   const tier2 = scan.tier_2_count ?? 0;
   const tier3 = scan.tier_3_count ?? 0;
   const totalCells = tier1 + tier2 + tier3 || scan.cell_count || 0;
+  const isInsufficientData = scan.status === 'completed_insufficient_data';
 
   return (
     <div className="p-6 space-y-6 max-w-5xl">
@@ -124,20 +125,61 @@ export default function ScanDetail() {
         </CardContent>
       </Card>
 
-      {/* Results Map */}
-      <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-sm">Cell Results Map</CardTitle></CardHeader>
-        <CardContent>
-          {geojson?.features?.length > 0 ? (
-            <ScanResultsMap geojson={geojson} geometry={scan.geometry} />
-          ) : (
-            <div className="py-8 text-center text-muted-foreground text-sm">No cell results available yet.</div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Insufficient Data Failure Mode */}
+      {isInsufficientData && (
+        <Card className="border-amber-300 bg-amber-50">
+          <CardContent className="pt-4 space-y-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+              <div>
+                <div className="font-semibold text-amber-900">Insufficient Data — Scan Could Not Be Scored</div>
+                <p className="text-xs text-amber-800 mt-1">The scan completed but lacked sufficient sensor data to compute prospectivity scores.</p>
+              </div>
+            </div>
+            
+            {/* Data-Quality Summary */}
+            {geojson?.metadata && (
+              <div className="bg-white rounded p-3 space-y-2 text-xs border border-amber-200">
+                <div className="font-medium text-foreground">Data Quality Summary</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>Cells with Valid Data: <span className="font-mono">{geojson.metadata.scored_cells}/{geojson.metadata.sampled_cells}</span></div>
+                  <div>Missing Spectral: <span className="font-mono">{geojson.metadata.missing_data_cells}</span></div>
+                  <div>Null SAR: <span className="font-mono">{geojson.metadata.null_sar_cells || 0}</span></div>
+                  <div>Null Thermal: <span className="font-mono">{geojson.metadata.null_thermal_cells || 0}</span></div>
+                </div>
+                <div className="border-t pt-2 mt-2 font-semibold">Scoreability Ratio: {((geojson.metadata.scoreability_ratio || 0) * 100).toFixed(1)}%</div>
+              </div>
+            )}
+            
+            <div className="bg-slate-50 rounded p-3 text-xs space-y-2 border">
+              <div className="font-medium text-slate-900">Possible Causes</div>
+              <ul className="list-disc list-inside text-slate-700 space-y-0.5">
+                <li>Satellite imagery unavailable for AOI during query period</li>
+                <li>GEE service account authentication issue</li>
+                <li>Data filtering returned empty collection</li>
+                <li>Sensor malfunction or data gap in archive</li>
+              </ul>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      
+      {/* Results Map (only if scored) */}
+      {!isInsufficientData && (
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Cell Results Map</CardTitle></CardHeader>
+          <CardContent>
+            {geojson?.features?.length > 0 ? (
+              <ScanResultsMap geojson={geojson} geometry={scan.geometry} />
+            ) : (
+              <div className="py-8 text-center text-muted-foreground text-sm">No cell results available yet.</div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Tier distribution bar */}
-      {totalCells > 0 && (
+      {/* Tier distribution bar (only if scored) */}
+      {!isInsufficientData && totalCells > 0 && (
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm">Tier Distribution</CardTitle></CardHeader>
           <CardContent className="space-y-2">
@@ -158,8 +200,8 @@ export default function ScanDetail() {
         </Card>
       )}
 
-      {/* Top cells table */}
-      {geojson?.features?.length > 0 && (
+      {/* Top cells table (only if scored) */}
+      {!isInsufficientData && geojson?.features?.length > 0 && (
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm">Top Cells by ACIF Score</CardTitle></CardHeader>
           <CardContent>
