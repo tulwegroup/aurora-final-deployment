@@ -1,16 +1,10 @@
 /**
  * Aurora OSI vNext — API Client
- * Phase P §P.1
  *
- * Thin HTTP client wrapping all aurora_vnext FastAPI endpoints.
- * CONSTITUTIONAL RULE: This module performs ZERO scientific computation.
- * It only issues requests and returns responses verbatim.
- * No threshold defaults, no ACIF arithmetic, no tier recounting.
+ * All browser requests route through the Base44 auroraProxy backend function
+ * to avoid CORS entirely. The proxy forwards server-to-server to Aurora.
  */
-
-// Canonical production Aurora API endpoint
-// Routes through CloudFront / ALB with proper CORS & routing
-const BASE = 'https://api.aurora-osi.com/api/v1';
+import { base44 } from '@/api/base44Client';
 
 export const API_ROOT = 'https://api.aurora-osi.com';
 
@@ -25,28 +19,22 @@ export function clearAccessToken() {
 }
 
 async function request(method, path, body = null) {
-  const headers = { "Content-Type": "application/json" };
-  if (_accessToken) headers["Authorization"] = `Bearer ${_accessToken}`;
-  
-  const url = `${BASE}${path}`;
-  console.log(`[Aurora] ${method} ${url}`);
-  
-  const res = await fetch(url, {
+  console.log(`[Aurora Proxy] ${method} ${path}`);
+  const res = await base44.functions.invoke('auroraProxy', {
     method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
+    path,
+    payload: body,
+    token: _accessToken,
   });
-  
-  console.log(`[Aurora] ${method} ${path} -> ${res.status}`);
-  
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    const error = new Error(err.detail || `Request failed with ${res.status}`);
-    error.status = res.status;
-    console.error(`[Aurora Error] ${method} ${path}:`, err);
+  const { data, status, ok } = res.data;
+  console.log(`[Aurora Proxy] ${method} ${path} -> ${status}`);
+  if (!ok) {
+    const detail = (typeof data === 'object' && data?.detail) ? data.detail : `Request failed with ${status}`;
+    const error = new Error(detail);
+    error.status = status;
     throw error;
   }
-  return res.json();
+  return data;
 }
 
 // Auth

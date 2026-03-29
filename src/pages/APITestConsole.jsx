@@ -1,14 +1,9 @@
 /**
  * APITestConsole — Live interactive testing console for the Aurora API
- * Tests all available endpoints against the live production API
+ * All requests route through the auroraProxy backend function (no CORS issues)
  */
 import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { CheckCircle, XCircle, Loader2, Play, ChevronDown, ChevronUp } from 'lucide-react';
-
-const API_ROOT = 'https://api.aurora-osi.com';
+import { base44 } from '@/api/base44Client';
 
 const ENDPOINTS = [
   { group: 'System', label: 'GET /health/live', method: 'GET', path: '/health/live', description: 'Primary health check' },
@@ -42,19 +37,13 @@ function EndpointRow({ endpoint, token }) {
     setResult(null);
     const start = Date.now();
     try {
-      const headers = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch(`${API_ROOT}${endpoint.path}`, { method: endpoint.method, headers });
+      const res = await base44.functions.invoke('auroraProxy', {
+        method: endpoint.method,
+        path: endpoint.path,
+        token: token || null,
+      });
       const elapsed = Date.now() - start;
-      let body;
-      const ct = res.headers.get('content-type') || '';
-      if (ct.includes('json')) {
-        body = await res.json();
-      } else {
-        body = await res.text();
-        body = body.slice(0, 500);
-      }
-      setResult({ status: res.status, body, elapsed });
+      setResult({ status: res.data.status, body: res.data.data, elapsed });
     } catch (e) {
       setResult({ status: 0, body: { error: e.message }, elapsed: Date.now() - start });
     }
@@ -95,9 +84,9 @@ export default function APITestConsole() {
     for (const ep of ENDPOINTS.filter(e => e.group === 'System')) {
       const start = Date.now();
       try {
-        const res = await fetch(`${API_ROOT}${ep.path}`);
-        const body = await res.json().catch(() => ({}));
-        results.push({ label: ep.label, status: res.status, ok: res.ok, elapsed: Date.now() - start, body });
+        const res = await base44.functions.invoke('auroraProxy', { method: ep.method, path: ep.path });
+        const { data, status, ok } = res.data;
+        results.push({ label: ep.label, status, ok, elapsed: Date.now() - start, body: data });
       } catch (e) {
         results.push({ label: ep.label, status: 0, ok: false, elapsed: Date.now() - start, body: { error: e.message } });
       }
@@ -169,8 +158,9 @@ export default function APITestConsole() {
       {/* API Info */}
       <Card className="bg-slate-950 text-slate-300">
         <CardContent className="pt-4 font-mono text-xs space-y-1">
-          <p className="text-slate-500">// Aurora API — Production</p>
-          <p>BASE_URL = "https://api.aurora-osi.com"</p>
+          <p className="text-slate-500">// Aurora API — Production (via server-side proxy, no CORS)</p>
+          <p>PROXY = base44.functions.invoke('auroraProxy', ...)</p>
+          <p>AURORA_BASE = "https://api.aurora-osi.com"</p>
           <p>STATUS = <span className="text-green-400">LIVE ✓</span></p>
           <p>IMAGE = 368331615566.dkr.ecr.us-east-1.amazonaws.com/aurora-api:latest</p>
           <p>CLUSTER = aurora-cluster-osi</p>
