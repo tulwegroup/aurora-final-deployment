@@ -24,6 +24,8 @@ from pydantic import BaseModel, Field
 
 from app.models.enums import TierLabel
 from app.models.observable_vector import NormalisedFloat
+from app.models.geological_gates_model import CellGeologicalGates
+from app.models.modality_contributions_model import CellModalityContributions
 
 
 class ScanCell(BaseModel):
@@ -163,6 +165,18 @@ class ScanCell(BaseModel):
         ge=0,
         le=42,
         description="Count of null observables — directly drives u_sensor"
+    )
+
+    # -------------------------------------------------------------------------
+    # Interpretability layer — Phase AU.5
+    # -------------------------------------------------------------------------
+    geological_gates: Optional[CellGeologicalGates] = Field(
+        default=None,
+        description="Geological gate evaluation (alteration, topographic, spatial coherence, thermal)"
+    )
+    modality_contributions: Optional[CellModalityContributions] = Field(
+        default=None,
+        description="Per-modality contributions to evidence score (clay, ferric, SAR, thermal, etc.)"
     )
 
     model_config = {"frozen": True}
