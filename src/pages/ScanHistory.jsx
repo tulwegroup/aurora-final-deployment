@@ -17,6 +17,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, ArrowRight } from "lucide-react";
+import APIOffline from "@/components/APIOffline";
 
 export default function ScanHistory() {
   const [scans, setScans]       = useState([]);
@@ -28,8 +29,11 @@ export default function ScanHistory() {
     setLoading(true);
     setError(null);
     try {
-      const jobs = await base44.entities.ScanJob.list('-created_date', 100);
-      setScans(jobs || []);
+      const response = await base44.functions.invoke('auroraProxy', {
+        endpoint: '/api/v1/history',
+        method: 'GET',
+      });
+      setScans(response.data?.scans || []);
     } catch (e) {
       setError(e.message);
     } finally {
