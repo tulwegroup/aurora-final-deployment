@@ -51,7 +51,7 @@ async function invokePythonWorker(cells, commodity, dateRange) {
   let tempDir;
 
   try {
-    tempDir = await Deno.makeTempDir();
+    tempDir = await Deno.makeTempDir({ prefix: 'aurora_' });
     const payloadFile = `${tempDir}/payload.json`;
     await Deno.writeTextFile(payloadFile, JSON.stringify(payload));
 
