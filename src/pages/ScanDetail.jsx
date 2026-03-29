@@ -3,8 +3,9 @@ import { useParams, Link } from "react-router-dom";
 import { base44 } from '@/api/base44Client';
 import { Badge } from "@/components/ui/badge";
 import ScanResultsMap from "../components/ScanResultsMap";
+import ScanProgressVisualization from "../components/ScanProgressVisualization";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, ArrowLeft, FileText, Map, Box, Lock, Download, CheckCircle, AlertTriangle, RefreshCw } from "lucide-react";
+import { Loader2, ArrowLeft, FileText, Map, Lock, CheckCircle, AlertTriangle, RefreshCw } from "lucide-react";
 
 export default function ScanDetail() {
   const { scanId } = useParams();
@@ -52,7 +53,7 @@ export default function ScanDetail() {
   const isInsufficientData = scan.status === 'completed_insufficient_data';
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl">
+    <div className="p-6 space-y-6 max-w-7xl">
       {/* Header */}
       <div className="flex items-center gap-3">
         <Link to="/history" className="text-muted-foreground hover:text-foreground"><ArrowLeft className="w-4 h-4" /></Link>
@@ -71,13 +72,33 @@ export default function ScanDetail() {
         </div>
       </div>
 
-      {/* Live scanning indicator */}
+      {/* Live scanning progress visualization */}
       {isRunning && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 flex items-center gap-2 text-sm text-blue-900">
-          <RefreshCw className="w-4 h-4 animate-spin" />
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+          <div className="lg:col-span-3">
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Live Scan Progress</CardTitle></CardHeader>
+              <CardContent>
+                <ScanProgressVisualization scan={scan} />
+              </CardContent>
+            </Card>
+          </div>
           <div>
-            <div className="font-semibold">Live Scan in Progress</div>
-            <div className="text-xs text-blue-700">Sampling {scan.cell_count || '?'} cells from Earth Engine. This may take 30–120 seconds.</div>
+            <Card className="bg-blue-50 border-blue-200 h-full">
+              <CardContent className="pt-4 space-y-2 text-sm">
+                <div>
+                  <div className="text-xs text-blue-600 font-semibold uppercase">Status</div>
+                  <div className="text-blue-900 font-medium">Processing…</div>
+                </div>
+                <div>
+                  <div className="text-xs text-blue-600 font-semibold uppercase">ETA</div>
+                  <div className="text-blue-900 font-medium">Computing…</div>
+                </div>
+                <div className="text-xs text-blue-700 mt-4 p-2 bg-white rounded">
+                  <p>Sampling {scan.cell_count || '?'} cells from Earth Engine's Sentinel-2, Sentinel-1, Landsat 8, and SRTM archives.</p>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       )}
@@ -134,7 +155,6 @@ export default function ScanDetail() {
               </div>
             </div>
             
-            {/* Data-Quality Summary */}
             {geojson?.metadata && (
               <div className="bg-white rounded p-3 space-y-2 text-xs border border-amber-200">
                 <div className="font-medium text-foreground">Data Quality Summary</div>
@@ -153,7 +173,6 @@ export default function ScanDetail() {
                 <li>Satellite imagery unavailable for AOI during query period</li>
                 <li>GEE service account authentication issue</li>
                 <li>Data filtering returned empty collection</li>
-                <li>Sensor malfunction or data gap in archive</li>
               </ul>
             </div>
           </CardContent>
@@ -174,7 +193,7 @@ export default function ScanDetail() {
         </Card>
       )}
 
-      {/* Tier distribution bar (only if scored) */}
+      {/* Tier distribution bar */}
       {!isInsufficientData && !isRunning && totalCells > 0 && (
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm">Tier Distribution</CardTitle></CardHeader>
@@ -196,7 +215,7 @@ export default function ScanDetail() {
         </Card>
       )}
 
-      {/* Top cells table (only if scored) */}
+      {/* Top cells table */}
       {!isInsufficientData && !isRunning && geojson?.features?.length > 0 && (
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm">Top Cells by ACIF Score</CardTitle></CardHeader>
