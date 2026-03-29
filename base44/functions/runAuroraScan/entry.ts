@@ -13,14 +13,20 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'geometry required' }, { status: 400 });
     }
 
-    // Get Aurora backend URL from environment or default to local dev
-    const auroraBackendUrl = Deno.env.get('AURORA_BACKEND_URL') || 'http://localhost:8000';
+    // Get Aurora backend URL from environment
+    const auroraBackendUrl = Deno.env.get('AURORA_BACKEND_URL');
+    if (!auroraBackendUrl) {
+      return Response.json(
+        { error: 'AURORA_BACKEND_URL not configured' },
+        { status: 503 }
+      );
+    }
 
     // Construct the scan request payload for Aurora backend
     const scanRequest = {
       commodity,
       scan_tier: resolution || 'medium',
-      environment: 'onshore', // TODO: infer from geometry
+      environment: 'onshore',
       aoi_polygon: {
         type: 'Polygon',
         coordinates: geometry.coordinates,
@@ -32,7 +38,7 @@ Deno.serve(async (req) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${user.email}`, // Pass user identity for audit trail
+        'Authorization': `Bearer ${user.email}`,
       },
       body: JSON.stringify(scanRequest),
     });
