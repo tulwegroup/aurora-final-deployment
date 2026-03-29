@@ -1,72 +1,65 @@
 import { Square, Pause, RotateCcw } from "lucide-react";
 
 export default function ScanProgressVisualization({ scan }) {
-  const cellsProcessed = scan.tier_1_count + scan.tier_2_count + scan.tier_3_count;
+  // Generate cell grid visualization
+  const tier1Cells = Array(scan.tier_1_count || 0).fill('TIER_1');
+  const tier2Cells = Array(scan.tier_2_count || 0).fill('TIER_2');
+  const tier3Cells = Array(scan.tier_3_count || 0).fill('TIER_3');
+  const allCells = [...tier1Cells, ...tier2Cells, ...tier3Cells];
   const totalCells = scan.cell_count || 1;
-  const progress = Math.round((cellsProcessed / totalCells) * 100);
-  const avgAcif = cellsProcessed > 0 ? (scan.display_acif_score || 0) : 0;
-  const maxAcif = 0.76; // Mock max for now
+  const avgAcif = allCells.length > 0 ? (scan.display_acif_score || 0) : 0;
   
+  const tierColors = {
+    TIER_1: 'bg-emerald-500 hover:bg-emerald-600',
+    TIER_2: 'bg-amber-400 hover:bg-amber-500',
+    TIER_3: 'bg-red-500 hover:bg-red-600',
+  };
+
   return (
-    <div className="bg-slate-900 text-white rounded-lg p-4 space-y-4">
-      {/* Status dropdown */}
-      <div className="flex items-center gap-2">
-        <div className="flex-1">
-          <select className="w-full bg-slate-800 text-white text-sm px-2 py-1 rounded border border-slate-700">
-            <option>Streaming (live cells)</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Progress bar */}
-      <div className="space-y-2">
-        <div className="h-3 bg-slate-800 rounded-full overflow-hidden">
-          <div 
-            className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-300"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-        <div className="text-sm text-slate-400">{cellsProcessed} / {totalCells} cells</div>
-      </div>
-
-      {/* Action buttons */}
-      <div className="space-y-2">
-        <button className="w-full bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-3 rounded flex items-center justify-center gap-2 transition-colors">
-          <Square className="w-4 h-4" /> Stop Scan
+    <div className="bg-slate-900 text-white rounded-lg p-3 space-y-3">
+      {/* Action buttons — compact row */}
+      <div className="flex gap-1">
+        <button className="flex-1 bg-red-600 hover:bg-red-700 text-white font-medium py-1.5 px-2 rounded text-xs flex items-center justify-center gap-1 transition-colors">
+          <Square className="w-3 h-3" /> Stop
         </button>
-        <button className="w-full bg-slate-700 hover:bg-slate-600 text-white font-medium py-2 px-3 rounded flex items-center justify-center gap-2 transition-colors">
-          <Pause className="w-4 h-4" /> Pause
+        <button className="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-medium py-1.5 px-2 rounded text-xs flex items-center justify-center gap-1 transition-colors">
+          <Pause className="w-3 h-3" /> Pause
         </button>
-        <button className="w-full bg-blue-700 hover:bg-blue-600 text-white font-medium py-2 px-3 rounded flex items-center justify-center gap-2 transition-colors">
-          <RotateCcw className="w-4 h-4" /> Re-Scan (use last params)
+        <button className="flex-1 bg-blue-700 hover:bg-blue-600 text-white font-medium py-1.5 px-2 rounded text-xs flex items-center justify-center gap-1 transition-colors">
+          <RotateCcw className="w-3 h-3" /> Re-Scan
         </button>
       </div>
 
-      {/* Stats grid */}
-      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-700">
-        <div className="text-center">
-          <div className="text-xs text-slate-500 uppercase tracking-wide">CELLS</div>
-          <div className="text-lg font-bold text-emerald-400">{cellsProcessed}</div>
+      {/* Cell grid visualization */}
+      <div className="bg-slate-800 rounded p-3 space-y-2">
+        <div className="text-xs font-semibold text-slate-300">Cell Progress: {allCells.length} / {totalCells}</div>
+        <div className="grid grid-cols-10 gap-1">
+          {Array(totalCells).fill(null).map((_, i) => {
+            const cell = allCells[i];
+            return (
+              <div
+                key={i}
+                className={`aspect-square rounded transition-all ${cell ? tierColors[cell] : 'bg-slate-700 opacity-40'}`}
+                title={cell ? `${cell}` : 'Pending'}
+              />
+            );
+          })}
         </div>
-        <div className="text-center">
-          <div className="text-xs text-slate-500 uppercase tracking-wide">MEAN ACIF</div>
+      </div>
+
+      {/* Compact stats */}
+      <div className="grid grid-cols-3 gap-2 pt-1 text-xs border-t border-slate-700">
+        <div className="text-center pt-2">
+          <div className="text-slate-500 uppercase tracking-wide text-[10px]">Cells</div>
+          <div className="text-lg font-bold text-emerald-400">{allCells.length}</div>
+        </div>
+        <div className="text-center pt-2">
+          <div className="text-slate-500 uppercase tracking-wide text-[10px]">ACIF</div>
           <div className="text-lg font-bold text-blue-400">{(avgAcif * 100).toFixed(1)}%</div>
         </div>
-        <div className="text-center">
-          <div className="text-xs text-slate-500 uppercase tracking-wide">MAX ACIF</div>
-          <div className="text-lg font-bold text-amber-400">{(maxAcif * 100).toFixed(1)}%</div>
-        </div>
-        <div className="text-center">
-          <div className="text-xs text-slate-500 uppercase tracking-wide">TIER 1</div>
+        <div className="text-center pt-2">
+          <div className="text-slate-500 uppercase tracking-wide text-[10px]">Tier 1</div>
           <div className="text-lg font-bold text-emerald-400">{scan.tier_1_count || 0}</div>
-        </div>
-        <div className="text-center">
-          <div className="text-xs text-slate-500 uppercase tracking-wide">TIER 2</div>
-          <div className="text-lg font-bold text-amber-400">{scan.tier_2_count || 0}</div>
-        </div>
-        <div className="text-center">
-          <div className="text-xs text-slate-500 uppercase tracking-wide">SYSTEM</div>
-          <div className="text-lg font-bold text-slate-400">—</div>
         </div>
       </div>
     </div>
