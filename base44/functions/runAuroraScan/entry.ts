@@ -14,13 +14,21 @@ Deno.serve(async (req) => {
     }
 
     // Get Aurora backend URL from environment
-    const auroraBackendUrl = Deno.env.get('AURORA_BACKEND_URL');
+    let auroraBackendUrl = Deno.env.get('AURORA_BACKEND_URL');
     if (!auroraBackendUrl) {
       return Response.json(
         { error: 'AURORA_BACKEND_URL not configured' },
         { status: 503 }
       );
     }
+
+    // Ensure URL has protocol
+    if (!auroraBackendUrl.startsWith('http://') && !auroraBackendUrl.startsWith('https://')) {
+      auroraBackendUrl = `https://${auroraBackendUrl}`;
+    }
+
+    // Remove trailing slash if present
+    auroraBackendUrl = auroraBackendUrl.replace(/\/$/, '');
 
     // Construct the scan request payload for Aurora backend
     const scanRequest = {
