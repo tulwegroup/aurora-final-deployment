@@ -4,6 +4,10 @@
  */
 import { useState } from 'react';
 import { base44 } from '@/api/base44Client';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { CheckCircle, XCircle, Loader2, Play, ChevronDown, ChevronUp } from 'lucide-react';
 
 const ENDPOINTS = [
   { group: 'System', label: 'GET /health/live', method: 'GET', path: '/health/live', description: 'Primary health check' },
