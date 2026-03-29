@@ -8,41 +8,30 @@
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 import { createHash } from 'node:crypto';
+import { SignJWT, importPKCS8 } from 'npm:jose@5.2.0';
 
 // ---------------------------------------------------------------------------
-// GEE OAuth2 — service account JWT flow
+// GEE OAuth2 — service account JWT flow using jose for correct RS256 signing
 // ---------------------------------------------------------------------------
 async function getGEEToken() {
   const keyJson = Deno.env.get('AURORA_GEE_SERVICE_ACCOUNT_KEY');
   if (!keyJson) throw new Error('AURORA_GEE_SERVICE_ACCOUNT_KEY not set');
 
   const key = JSON.parse(keyJson);
-  const now = Math.floor(Date.now() / 1000);
-  const claim = {
-    iss: key.client_email,
+  // Normalize PEM — secrets sometimes store \n as literal backslash-n
+  const privateKeyPem = key.private_key.replace(/\\n/g, '\n');
+
+  const privateKey = await importPKCS8(privateKeyPem, 'RS256');
+
+  const jwt = await new SignJWT({
     scope: 'https://www.googleapis.com/auth/earthengine https://www.googleapis.com/auth/cloud-platform',
-    aud: 'https://oauth2.googleapis.com/token',
-    exp: now + 3600,
-    iat: now,
-  };
-
-  // Build JWT
-  const header = btoa(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-  const payload = btoa(JSON.stringify(claim)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-  const sigInput = `${header}.${payload}`;
-
-  // Import private key
-  const pemBody = key.private_key.replace(/-----[^-]+-----/g, '').replace(/\s/g, '');
-  const derBuf = Uint8Array.from(atob(pemBody), c => c.charCodeAt(0));
-  const cryptoKey = await crypto.subtle.importKey(
-    'pkcs8', derBuf,
-    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-    false, ['sign']
-  );
-  const sigBuf = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', cryptoKey, new TextEncoder().encode(sigInput));
-  const sig = btoa(String.fromCharCode(...new Uint8Array(sigBuf))).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-
-  const jwt = `${sigInput}.${sig}`;
+  })
+    .setProtectedHeader({ alg: 'RS256' })
+    .setIssuer(key.client_email)
+    .setAudience('https://oauth2.googleapis.com/token')
+    .setIssuedAt()
+    .setExpirationTime('1h')
+    .sign(privateKey);
 
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
@@ -300,13 +289,25 @@ Deno.serve(async (req) => {
     : cells;
 
   let geeToken = null;
-  let geeAvailable = true;
 
   try {
     geeToken = await getGEEToken();
   } catch (e) {
-    console.warn('GEE auth failed, using spectral simulation:', e.message);
-    geeAvailable = false;
+    console.error('GEE auth failed:', e.message);
+    // Update entity to failed state
+    const jobs = await base44.entities.ScanJob.filter({ scan_id: scanId });
+    if (jobs?.length > 0) {
+      await base44.entities.ScanJob.update(jobs[0].id, {
+        status: 'failed',
+        error_message: `GEE authentication failed: ${e.message}`,
+      });
+    }
+    return Response.json({
+      error: 'GEE authentication failed — cannot produce real satellite data.',
+      detail: e.message,
+      scan_id: scanId,
+      status: 'failed',
+    }, { status: 503 });
   }
 
   // Date range: last 12 months
@@ -319,16 +320,19 @@ Deno.serve(async (req) => {
 
   for (const cell of sampledCells) {
     let bands;
-    if (geeAvailable && geeToken) {
-      try {
-        bands = await fetchCellBands(geeToken, cell, startDate, endDate);
-      } catch (e) {
-        console.warn(`GEE cell fetch failed for [${cell.centerLon},${cell.centerLat}]:`, e.message);
-        // Fallback: simulate from position (deterministic)
-        bands = simulateBands(cell, commodity);
+    try {
+      bands = await fetchCellBands(geeToken, cell, startDate, endDate);
+    } catch (e) {
+      console.error(`GEE cell fetch failed for [${cell.centerLon},${cell.centerLat}]:`, e.message);
+      // Mark failed and abort — no synthetic fallback
+      const jobs = await base44.entities.ScanJob.filter({ scan_id: scanId });
+      if (jobs?.length > 0) {
+        await base44.entities.ScanJob.update(jobs[0].id, {
+          status: 'failed',
+          error_message: `GEE cell fetch failed: ${e.message}`,
+        });
       }
-    } else {
-      bands = simulateBands(cell, commodity);
+      return Response.json({ error: 'GEE cell fetch failed', detail: e.message, scan_id: scanId, status: 'failed' }, { status: 503 });
     }
 
     const scores = scoreCellBands(bands, commodity);
@@ -357,7 +361,7 @@ Deno.serve(async (req) => {
         commodity,
         center_lon: cell.centerLon,
         center_lat: cell.centerLat,
-        source: geeAvailable ? 'gee' : 'simulated',
+        source: 'gee',
         bands,
       }
     });
@@ -374,7 +378,7 @@ Deno.serve(async (req) => {
       geometry_hash: geometryHash,
       total_cells: cellCount,
       sampled_cells: sampledCells.length,
-      gee_sourced: geeAvailable,
+      gee_sourced: true,
       pipeline_version: 'vnext-1.0',
       completed_at: new Date().toISOString(),
     }
@@ -407,28 +411,8 @@ Deno.serve(async (req) => {
     tier_1_count: tier1,
     tier_2_count: tier2,
     tier_3_count: tier3,
-    gee_sourced: geeAvailable,
+    gee_sourced: true,
   });
 });
 
-// ---------------------------------------------------------------------------
-// Deterministic band simulation (used if GEE unavailable)
-// Seeds from cell coordinates so same cell always gets same values
-// ---------------------------------------------------------------------------
-function simulateBands(cell, commodity) {
-  // Use position as seed (simple hash)
-  const seed = Math.sin(cell.centerLon * 12.9898 + cell.centerLat * 78.233) * 43758.5453;
-  const rand = seed - Math.floor(seed);
-  const rand2 = Math.sin(seed * 9.1234) * 43758.5453;
-  const r2 = rand2 - Math.floor(rand2);
-
-  // Simulate realistic Sentinel-2 reflectance ranges (scaled 0-10000)
-  const base = { gold: 0.6, copper: 0.55, lithium: 0.65, diamonds: 0.5 }[commodity] || 0.6;
-
-  return {
-    red:   800  + rand  * 2000,
-    nir:   2500 + r2    * 3000,
-    swir1: 1500 + rand  * 2500 * base,
-    swir2: 1000 + r2    * 2000 * base,
-  };
-}
+// simulateBands removed — no synthetic fallback permitted
