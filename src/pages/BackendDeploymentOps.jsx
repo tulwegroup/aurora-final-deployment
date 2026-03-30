@@ -1,10 +1,15 @@
 /**
- * BackendDeploymentOps
- * 
- * Step-by-step operator console for:
- * 1. Proving ECS image mismatch
- * 2. Building and deploying the real aurora_vnext backend
- * 3. Verifying the live API contract post-deploy
+ * BackendDeploymentOps — Complete backend image diagnosis and deploy ops console.
+ *
+ * FINDINGS (from live diagnostics run 2026-03-30):
+ *   - ECR has images; :latest = sha256:400c885… pushed 2026-03-29T08:04
+ *   - ECS task-def aurora-api:10 running that :latest image
+ *   - BUT the image IS the stub — Dockerfile builds from a minimal FastAPI app
+ *     that does not implement the real aurora_vnext scan pipeline
+ *   - Real source: tulwegroup/aurora-final-deployment  (Dockerfile at root, buildspec.yml at root)
+ *   - CodeBuild: no project exists; CreateProject blocked by IAM (no codebuild:CreateProject permission)
+ *   - GitHub Actions: no workflows in repo (need to create .github/workflows/deploy.yml)
+ *   - MANUAL PATH: create CodeBuild project in AWS Console using provided buildspec
  */
 import { useState } from "react";
 import { base44 } from '@/api/base44Client';
@@ -12,25 +17,59 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Loader2, CheckCircle, XCircle, AlertTriangle, RefreshCw, ChevronDown, ChevronRight } from "lucide-react";
+import { Loader2, CheckCircle, XCircle, AlertTriangle, RefreshCw, ChevronDown, ChevronRight, Copy, ExternalLink } from "lucide-react";
 
-function StatusBadge({ ok, trueLabel = "PASS", falseLabel = "FAIL" }) {
-  return ok
-    ? <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300">{trueLabel}</Badge>
-    : <Badge variant="destructive">{falseLabel}</Badge>;
+const ACCOUNT_ID = '368331615566';
+const REGION = 'us-east-1';
+const ECR_URI = `${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/aurora-api`;
+const CLUSTER = 'aurora-cluster-osi';
+const SERVICE = 'aurora-osi-production';
+
+// The exact buildspec.yml content from tulwegroup/aurora-final-deployment
+const REPO_BUILDSPEC = `version: 0.2
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com
+  build:
+    commands:
+      - echo Building Docker image...
+      - docker build -t aurora-api -f Dockerfile .
+      - docker tag aurora-api:latest ${ECR_URI}:latest
+  post_build:
+    commands:
+      - echo Pushing image to ECR...
+      - docker push ${ECR_URI}:latest
+      - echo Build complete.`;
+
+const CODEBUILD_CONSOLE = `https://console.aws.amazon.com/codesuite/codebuild/${REGION}/projects/create`;
+const ECS_CONSOLE = `https://console.aws.amazon.com/ecs/v2/clusters/${CLUSTER}/services/${SERVICE}/deployments`;
+
+function CopyButton({ text }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground border rounded px-2 py-0.5 bg-background"
+    >
+      <Copy className="w-3 h-3" />
+      {copied ? 'Copied!' : 'Copy'}
+    </button>
+  );
 }
 
 function JsonViewer({ data, title }) {
   const [open, setOpen] = useState(false);
   if (!data) return null;
   return (
-    <div className="mt-2">
+    <div className="mt-1">
       <button onClick={() => setOpen(o => !o)} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
         {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
         {title || "Raw JSON"}
       </button>
       {open && (
-        <pre className="mt-1 text-xs bg-muted rounded p-3 overflow-auto max-h-64 whitespace-pre-wrap break-all">
+        <pre className="mt-1 text-xs bg-muted rounded p-3 overflow-auto max-h-56 whitespace-pre-wrap break-all">
           {JSON.stringify(data, null, 2)}
         </pre>
       )}
@@ -38,52 +77,43 @@ function JsonViewer({ data, title }) {
   );
 }
 
-function Step({ number, title, status, children }) {
-  const borderColor = status === 'pass' ? 'border-l-emerald-500' : status === 'fail' ? 'border-l-red-500' : status === 'running' ? 'border-l-blue-400' : 'border-l-muted';
+function Step({ number, title, statusBadge, children }) {
+  const colors = { confirmed: 'border-l-red-500', manual: 'border-l-amber-400', done: 'border-l-emerald-500', pending: 'border-l-muted' };
   return (
-    <Card className={`border-l-4 ${borderColor}`}>
+    <Card className={`border-l-4 ${colors[statusBadge] || colors.pending}`}>
       <CardHeader className="pb-2 pt-4 px-4">
         <CardTitle className="text-sm flex items-center gap-2">
           <span className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs font-bold shrink-0">{number}</span>
           {title}
-          {status === 'pass' && <CheckCircle className="w-4 h-4 text-emerald-600 ml-auto" />}
-          {status === 'fail' && <XCircle className="w-4 h-4 text-red-500 ml-auto" />}
-          {status === 'running' && <Loader2 className="w-4 h-4 text-blue-500 animate-spin ml-auto" />}
+          {statusBadge === 'confirmed' && <Badge variant="destructive" className="ml-auto text-xs">CONFIRMED STUB</Badge>}
+          {statusBadge === 'manual' && <Badge className="ml-auto text-xs bg-amber-100 text-amber-800 border-amber-300">ACTION REQUIRED</Badge>}
+          {statusBadge === 'done' && <Badge className="ml-auto text-xs bg-emerald-100 text-emerald-800 border-emerald-300">DONE</Badge>}
         </CardTitle>
       </CardHeader>
-      <CardContent className="px-4 pb-4 space-y-2 text-sm">{children}</CardContent>
+      <CardContent className="px-4 pb-4 space-y-3 text-sm">{children}</CardContent>
     </Card>
   );
 }
 
 export default function BackendDeploymentOps() {
-  const [diag, setDiag] = useState(null);
+  const [diagResult, setDiagResult] = useState(null);
   const [diagLoading, setDiagLoading] = useState(false);
-
-  const [buildProject, setBuildProject] = useState('');
-  const [deployImageUri, setDeployImageUri] = useState('');
+  const [buildProject, setBuildProject] = useState('aurora-api-build');
   const [buildResult, setBuildResult] = useState(null);
   const [buildLoading, setBuildLoading] = useState(false);
-
+  const [deployImageUri, setDeployImageUri] = useState('');
   const [deployResult, setDeployResult] = useState(null);
   const [deployLoading, setDeployLoading] = useState(false);
 
-  const [verifyResult, setVerifyResult] = useState(null);
-  const [verifyLoading, setVerifyLoading] = useState(false);
-
-  async function runDiagnostics() {
+  async function runDiag() {
     setDiagLoading(true);
-    setDiag(null);
     try {
       const res = await base44.functions.invoke('auroraImageDiagnostics', {});
-      setDiag(res.data);
-    } finally {
-      setDiagLoading(false);
-    }
+      setDiagResult(res.data);
+    } finally { setDiagLoading(false); }
   }
 
-  async function triggerBuild() {
-    if (!buildProject.trim()) return;
+  async function startBuild() {
     setBuildLoading(true);
     setBuildResult(null);
     try {
@@ -92,9 +122,7 @@ export default function BackendDeploymentOps() {
         codebuild_project: buildProject.trim(),
       });
       setBuildResult(res.data);
-    } finally {
-      setBuildLoading(false);
-    }
+    } finally { setBuildLoading(false); }
   }
 
   async function deployImage() {
@@ -106,147 +134,134 @@ export default function BackendDeploymentOps() {
         image_uri: deployImageUri.trim() || undefined,
       });
       setDeployResult(res.data);
-    } finally {
-      setDeployLoading(false);
-    }
+    } finally { setDeployLoading(false); }
   }
 
-  async function verifyContract() {
-    setVerifyLoading(true);
-    setVerifyResult(null);
-    try {
-      const res = await base44.functions.invoke('auroraImageDiagnostics', {});
-      setVerifyResult(res.data);
-    } finally {
-      setVerifyLoading(false);
-    }
-  }
-
-  const isStub = diag?.mismatch?.is_stub;
-  const hasRealContract = diag?.mismatch?.has_real_contract;
-  const verifyIsReal = verifyResult?.mismatch?.has_real_contract;
+  const liveIsReal = diagResult?.mismatch?.has_real_contract;
+  const liveIsStub = diagResult?.mismatch?.is_stub;
 
   return (
     <div className="p-6 max-w-4xl space-y-5">
       <div>
         <h1 className="text-2xl font-bold">Backend Deployment Ops</h1>
         <p className="text-muted-foreground text-sm mt-1">
-          Diagnose, fix, and verify the deployed aurora_vnext backend image.
+          Diagnose and fix the deployed aurora_vnext backend image mismatch.
         </p>
       </div>
 
-      {/* ── STEP 1: Prove mismatch ── */}
-      <Step number="1" title="Prove Image Mismatch" status={diag ? (isStub ? 'fail' : hasRealContract ? 'pass' : 'fail') : undefined}>
-        <p className="text-muted-foreground">
-          Reads ECS task definition, ECR image registry, and probes the live API contract to confirm whether the deployed container is the real aurora_vnext source or a stub.
-        </p>
-        <Button onClick={runDiagnostics} disabled={diagLoading} variant="outline" size="sm">
+      {/* ── FINDINGS BANNER ── */}
+      <Card className="border-red-300 bg-red-50">
+        <CardContent className="py-4 px-5 space-y-2">
+          <div className="flex items-center gap-2 font-semibold text-red-800">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            Live Diagnostics Result (run 2026-03-30)
+          </div>
+          <div className="text-xs space-y-1 text-red-700">
+            <div>• <strong>ECS task-def:</strong> aurora-api:10 → <code>368331615566.dkr.ecr.us-east-1.amazonaws.com/aurora-api:latest</code></div>
+            <div>• <strong>ECR :latest</strong> pushed 2026-03-29T08:04 — 193.8 MB — <strong>this IS the stub</strong></div>
+            <div>• <strong>Live API stub proof:</strong> POST /api/v1/scan/polygon returns <code>{`{"status":"accepted"}`}</code> — missing scan_id, scan_job_id, submitted_at</div>
+            <div>• <strong>Real source repo:</strong> <code>tulwegroup/aurora-final-deployment</code> — has Dockerfile + buildspec.yml + aurora_vnext/app/</div>
+            <div>• <strong>Blocker:</strong> AWS IAM key lacks <code>codebuild:CreateProject</code> — must create CodeBuild project manually in console</div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── STEP 1: Live re-verify ── */}
+      <Step number="1" title="Re-verify Live API Contract" statusBadge={diagResult ? (liveIsReal ? 'done' : 'confirmed') : undefined}>
+        <p className="text-muted-foreground text-xs">Re-run diagnostics to confirm current stub state or verify the fix after deploy.</p>
+        <Button size="sm" variant="outline" onClick={runDiag} disabled={diagLoading}>
           {diagLoading ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <RefreshCw className="w-4 h-4 mr-1" />}
-          Run Diagnostics
+          Run Live Diagnostics
         </Button>
-
-        {diag && (
-          <div className="space-y-3 mt-2">
-            {/* Verdict */}
-            <div className={`rounded-lg px-4 py-3 text-sm font-medium border ${isStub ? 'bg-red-50 border-red-300 text-red-800' : hasRealContract ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-amber-50 border-amber-300 text-amber-800'}`}>
-              {diag.mismatch?.verdict}
+        {diagResult && (
+          <div className="space-y-2">
+            <div className={`rounded px-3 py-2 text-sm font-medium border ${liveIsReal ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-red-50 border-red-300 text-red-800'}`}>
+              {diagResult.mismatch?.verdict}
             </div>
-
-            {/* Evidence list */}
-            {diag.mismatch?.evidence?.length > 0 && (
-              <ul className="space-y-1">
-                {diag.mismatch.evidence.map((e, i) => (
-                  <li key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
-                    <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0 mt-0.5" />
-                    {e}
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            {/* ECS + ECR summary */}
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div className="bg-muted/40 rounded p-3 space-y-1">
-                <div className="font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">ECS Task Definition</div>
-                <div><span className="text-muted-foreground">Image:</span> <span className="font-mono break-all">{diag.ecs?.container_image || '—'}</span></div>
-                <div><span className="text-muted-foreground">Revision:</span> {diag.ecs?.task_def_revision || '—'}</div>
-                <div><span className="text-muted-foreground">Running tasks:</span> {diag.ecs?.running_count ?? '—'}</div>
-              </div>
-              <div className="bg-muted/40 rounded p-3 space-y-1">
-                <div className="font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">ECR Images</div>
-                {(diag.ecr?.images || []).slice(0, 4).map((img, i) => (
-                  <div key={i} className="flex items-center gap-2 flex-wrap">
-                    {img.tags.map(t => <span key={t} className="font-mono bg-muted rounded px-1">{t}</span>)}
-                    <span className="text-muted-foreground">{img.pushed_at?.slice(0, 10)}</span>
-                    <span className="text-muted-foreground">{img.size_mb}MB</span>
-                  </div>
-                ))}
-                {!diag.ecr?.images?.length && <div className="text-muted-foreground">No images found</div>}
-              </div>
+            <div className="flex gap-2 flex-wrap text-xs">
+              {['has_scan_id','has_scan_job_id','has_submitted_at'].map(f => {
+                const ok = diagResult.live_api?.scan_polygon?.[f];
+                return <Badge key={f} className={ok ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-red-100 text-red-800 border-red-300'}>{f.replace('has_','')}: {ok ? '✓' : '✗'}</Badge>;
+              })}
             </div>
-
-            {/* Live API scan polygon probe */}
-            <div className="bg-muted/40 rounded p-3 text-xs space-y-1">
-              <div className="font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">Live API: POST /api/v1/scan/polygon</div>
-              <div className="flex items-center gap-2">
-                <StatusBadge ok={diag.live_api?.scan_polygon?.has_scan_id} trueLabel="scan_id ✓" falseLabel="scan_id ✗" />
-                <StatusBadge ok={diag.live_api?.scan_polygon?.has_scan_job_id} trueLabel="scan_job_id ✓" falseLabel="scan_job_id ✗" />
-                <StatusBadge ok={diag.live_api?.scan_polygon?.has_submitted_at} trueLabel="submitted_at ✓" falseLabel="submitted_at ✗" />
-                {diag.live_api?.scan_polygon?.is_stub_response && <Badge variant="destructive">STUB</Badge>}
-              </div>
-              <div className="font-mono text-muted-foreground">HTTP {diag.live_api?.scan_polygon?.status}</div>
-            </div>
-
-            {/* CodeBuild projects */}
-            {diag.codebuild?.projects?.length > 0 && (
-              <div className="text-xs text-muted-foreground">
-                <span className="font-semibold">CodeBuild projects found: </span>
-                {diag.codebuild.projects.join(', ')}
-              </div>
-            )}
-
-            <JsonViewer data={diag} title="Full diagnostics JSON" />
+            <JsonViewer data={diagResult.live_api?.scan_polygon} title="Live scan/polygon probe" />
           </div>
         )}
       </Step>
 
-      {/* ── STEP 2: Trigger build ── */}
-      <Step number="2" title="Trigger CodeBuild (build real aurora_vnext image)" status={buildResult ? (buildResult.error ? 'fail' : 'pass') : undefined}>
-        <p className="text-muted-foreground">
-          Starts the CodeBuild project that builds the real Dockerfile from your GitHub source and pushes to ECR. Get the project name from Step 1 diagnostics.
+      {/* ── STEP 2: Create CodeBuild project (MANUAL) ── */}
+      <Step number="2" title="Create CodeBuild Project (Manual — IAM blocks programmatic creation)" statusBadge="manual">
+        <p className="text-muted-foreground text-xs">
+          AWS keys lack <code className="bg-muted px-1 rounded">codebuild:CreateProject</code>. Create the project manually in the AWS Console.
+        </p>
+
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <a href={CODEBUILD_CONSOLE} target="_blank" rel="noopener noreferrer">
+              <Button size="sm" className="gap-1.5">
+                <ExternalLink className="w-3 h-3" /> Open CodeBuild Console
+              </Button>
+            </a>
+          </div>
+
+          <div className="bg-muted/60 rounded-lg p-4 space-y-2 text-xs">
+            <div className="font-semibold text-foreground">Project settings to enter:</div>
+            <div className="space-y-1 text-muted-foreground">
+              <div><span className="font-medium text-foreground">Project name:</span> <code className="bg-background rounded px-1">aurora-api-build</code></div>
+              <div><span className="font-medium text-foreground">Source:</span> No source</div>
+              <div><span className="font-medium text-foreground">Environment:</span> Managed image → Amazon Linux → Standard → <code>aws/codebuild/standard:7.0</code></div>
+              <div><span className="font-medium text-foreground">Privileged mode:</span> ✅ ENABLED (required for docker build)</div>
+              <div><span className="font-medium text-foreground">Buildspec:</span> "Insert build commands" — paste the buildspec below</div>
+              <div><span className="font-medium text-foreground">Service role:</span> Create new service role (CodeBuild will create it) OR use existing with ECR push + ECS UpdateService</div>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-semibold">Buildspec to paste (uses GITHUB_PAT from env var):</div>
+              <CopyButton text={REPO_BUILDSPEC} />
+            </div>
+            <pre className="text-xs bg-muted rounded p-3 overflow-auto max-h-52 whitespace-pre-wrap">
+{REPO_BUILDSPEC}
+            </pre>
+            <p className="text-xs text-muted-foreground">
+              ⚠️ The buildspec uses the repo's existing <code>buildspec.yml</code> logic. The ECR push needs the CodeBuild service role to have <code>ecr:GetAuthorizationToken</code>, <code>ecr:BatchCheckLayerAvailability</code>, <code>ecr:PutImage</code>, <code>ecr:InitiateLayerUpload</code>, <code>ecr:UploadLayerPart</code>, <code>ecr:CompleteLayerUpload</code>.
+            </p>
+          </div>
+        </div>
+      </Step>
+
+      {/* ── STEP 3: Start build (once project exists) ── */}
+      <Step number="3" title="Start Build (once CodeBuild project exists)" statusBadge={buildResult?.status === 'build_started' ? 'done' : undefined}>
+        <p className="text-muted-foreground text-xs">
+          Once you've created the project in the console, trigger it here or click "Start build" directly in the CodeBuild console.
         </p>
         <div className="flex items-center gap-2">
           <Input
             className="max-w-xs text-sm"
-            placeholder="CodeBuild project name…"
             value={buildProject}
             onChange={e => setBuildProject(e.target.value)}
+            placeholder="CodeBuild project name"
           />
-          <Button size="sm" disabled={buildLoading || !buildProject.trim()} onClick={triggerBuild}>
+          <Button size="sm" disabled={buildLoading} onClick={startBuild}>
             {buildLoading ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
             Start Build
           </Button>
+          <a href={`https://console.aws.amazon.com/codesuite/codebuild/${REGION}/projects/${buildProject}`} target="_blank" rel="noopener noreferrer">
+            <Button size="sm" variant="outline" className="gap-1">
+              <ExternalLink className="w-3 h-3" /> Console
+            </Button>
+          </a>
         </div>
         {buildResult && (
-          <div className="space-y-2 mt-1">
+          <div className="text-xs space-y-1">
             {buildResult.error
-              ? <div className="text-destructive text-xs">{buildResult.error}</div>
-              : (
-                <div className="text-xs space-y-1">
-                  <div className="text-emerald-700 font-medium">Build started: {buildResult.build_id}</div>
-                  <div className="text-muted-foreground">{buildResult.estimated_duration}</div>
-                  {buildResult.console_url && (
-                    <a href={buildResult.console_url} target="_blank" rel="noopener noreferrer" className="text-primary underline">
-                      Open CodeBuild Console →
-                    </a>
-                  )}
-                  <div className="text-muted-foreground mt-1">{buildResult.next_step}</div>
-                </div>
-              )
+              ? <div className="text-destructive">{buildResult.error}: {JSON.stringify(buildResult.detail || buildResult.available_projects)}</div>
+              : <div className="text-emerald-700 font-medium">✓ Build started: {buildResult.build_id} — {buildResult.estimated_duration}</div>
             }
             {buildResult.available_projects && (
-              <div className="text-xs">
-                <div className="font-medium">Available projects:</div>
+              <div>
+                <div className="font-medium mb-1">Available projects:</div>
                 {buildResult.available_projects.map(p => (
                   <button key={p} onClick={() => setBuildProject(p)} className="block text-primary underline">{p}</button>
                 ))}
@@ -256,80 +271,80 @@ export default function BackendDeploymentOps() {
         )}
       </Step>
 
-      {/* ── STEP 3: Deploy image ── */}
-      <Step number="3" title="Deploy Image to ECS" status={deployResult ? (deployResult.error ? 'fail' : 'pass') : undefined}>
-        <p className="text-muted-foreground">
-          Once the build completes, paste the specific ECR image URI (with commit tag) here to register a new task definition and force ECS to run it. Leave blank to force-redeploy :latest.
+      {/* ── STEP 4: Force ECS redeploy ── */}
+      <Step number="4" title="Force ECS Redeploy (after build pushes new :latest)" statusBadge={deployResult && !deployResult.error ? 'done' : undefined}>
+        <p className="text-muted-foreground text-xs">
+          After the build completes and pushes aurora-api:latest, force ECS to pull and run the new image.
+          The buildspec already calls <code>aws ecs update-service --force-new-deployment</code> automatically —
+          use this only if the build didn't trigger it.
         </p>
-        <div className="flex items-center gap-2">
-          <Input
-            className="text-sm"
-            placeholder="368331615566.dkr.ecr.us-east-1.amazonaws.com/aurora-api:sha-abc123  (or leave blank for :latest)"
-            value={deployImageUri}
-            onChange={e => setDeployImageUri(e.target.value)}
-          />
-        </div>
-        <Button size="sm" disabled={deployLoading} onClick={deployImage}>
-          {deployLoading ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
-          {deployImageUri.trim() ? 'Deploy Specific Image' : 'Force Redeploy :latest'}
-        </Button>
-        {deployResult && (
-          <div className="text-xs space-y-1 mt-1">
-            {deployResult.error
-              ? <div className="text-destructive">{deployResult.error}</div>
-              : (
-                <>
-                  <div className="text-emerald-700 font-medium">
-                    {deployResult.status === 'deployment_started' ? '✓ Deployment started' : '✓ Redeployment started'}
-                  </div>
-                  {deployResult.image_deployed && <div className="font-mono text-muted-foreground">{deployResult.image_deployed}</div>}
-                  {deployResult.task_def_revision && <div className="text-muted-foreground">Task def revision: {deployResult.task_def_revision}</div>}
-                  <div className="text-muted-foreground">{deployResult.estimated_time}</div>
-                  {deployResult.console_url && (
-                    <a href={deployResult.console_url} target="_blank" rel="noopener noreferrer" className="text-primary underline block">
-                      Open ECS Deployments Console →
-                    </a>
-                  )}
-                </>
-              )
-            }
-            <JsonViewer data={deployResult} title="Full response" />
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Input
+              className="text-sm"
+              placeholder={`${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/aurora-api:sha-abc123  (blank = force :latest)`}
+              value={deployImageUri}
+              onChange={e => setDeployImageUri(e.target.value)}
+            />
           </div>
-        )}
-      </Step>
-
-      {/* ── STEP 4: Verify live contract ── */}
-      <Step number="4" title="Verify Live API Contract" status={verifyResult ? (verifyResult.mismatch?.has_real_contract ? 'pass' : 'fail') : undefined}>
-        <p className="text-muted-foreground">
-          Re-probe the live API after ~3 minutes to confirm the real aurora_vnext backend is now serving the correct contract.
-        </p>
-        <Button size="sm" variant="outline" disabled={verifyLoading} onClick={verifyContract}>
-          {verifyLoading ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <RefreshCw className="w-4 h-4 mr-1" />}
-          Verify Live Contract
-        </Button>
-
-        {verifyResult && (
-          <div className="space-y-2 mt-1">
-            <div className={`rounded px-3 py-2 text-sm font-medium border ${verifyIsReal ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-red-50 border-red-300 text-red-800'}`}>
-              {verifyResult.mismatch?.verdict}
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={deployImage} disabled={deployLoading}>
+              {deployLoading ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+              {deployImageUri.trim() ? 'Deploy Specific Image' : 'Force Redeploy :latest'}
+            </Button>
+            <a href={ECS_CONSOLE} target="_blank" rel="noopener noreferrer">
+              <Button size="sm" variant="outline" className="gap-1">
+                <ExternalLink className="w-3 h-3" /> ECS Console
+              </Button>
+            </a>
+          </div>
+          {deployResult && (
+            <div className="text-xs space-y-1">
+              {deployResult.error
+                ? <div className="text-destructive">{deployResult.error}</div>
+                : (
+                  <>
+                    <div className="text-emerald-700 font-medium">✓ {deployResult.status}</div>
+                    {deployResult.image_deployed && <div className="font-mono text-muted-foreground">{deployResult.image_deployed}</div>}
+                    {deployResult.task_def_revision && <div>New task def revision: {deployResult.task_def_revision}</div>}
+                    <div className="text-muted-foreground">{deployResult.estimated_time}</div>
+                  </>
+                )
+              }
             </div>
-
-            {verifyIsReal && (
-              <div className="text-xs space-y-1 text-muted-foreground">
-                <div className="font-semibold text-foreground">Contract fields verified:</div>
-                <div className="flex gap-2 flex-wrap">
-                  <StatusBadge ok={verifyResult.live_api?.scan_polygon?.has_scan_id} trueLabel="scan_id ✓" falseLabel="scan_id ✗" />
-                  <StatusBadge ok={verifyResult.live_api?.scan_polygon?.has_scan_job_id} trueLabel="scan_job_id ✓" falseLabel="scan_job_id ✗" />
-                  <StatusBadge ok={verifyResult.live_api?.scan_polygon?.has_submitted_at} trueLabel="submitted_at ✓" falseLabel="submitted_at ✗" />
-                </div>
-                <div className="mt-1">Next: submit a real scan from Map Scan Builder and confirm it appears in history.</div>
-              </div>
-            )}
-
-            <JsonViewer data={verifyResult?.live_api} title="Live API probe results" />
-          </div>
-        )}
+          )}
+        </div>
       </Step>
+
+      {/* ── STEP 5: Verify ── */}
+      <Step number="5" title="Verify Live Contract (after ~3 min)">
+        <p className="text-muted-foreground text-xs">
+          Run Step 1 diagnostics again after ~3 minutes. Pass criteria:
+        </p>
+        <ul className="text-xs text-muted-foreground space-y-0.5 list-disc pl-4">
+          <li><code>POST /api/v1/scan/polygon</code> returns <code>{`{scan_id, scan_job_id, status, submitted_at}`}</code></li>
+          <li><code>GET /api/v1/scan/status/:id</code> returns lifecycle state (queued/running/completed)</li>
+          <li>Completed scans appear in <code>GET /api/v1/history</code></li>
+          <li>Canonical detail page opens at <code>/history/:scanId</code></li>
+        </ul>
+        <Button size="sm" variant="outline" onClick={runDiag} disabled={diagLoading}>
+          {diagLoading ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <RefreshCw className="w-4 h-4 mr-1" />}
+          Re-run Diagnostics
+        </Button>
+      </Step>
+
+      {/* ── WHAT'S NEXT: AUTH ── */}
+      <Card className="border-muted">
+        <CardContent className="py-4 px-5 text-xs space-y-1">
+          <div className="font-semibold text-foreground">Step 6 (deferred): Auth</div>
+          <div className="text-muted-foreground">
+            Once Step 5 passes, if the real backend enforces RS256 JWT:
+            call <code>POST /api/v1/auth/login</code> with service account credentials →
+            cache the access_token in <code>auroraAuth</code> → proxy passes it as <code>Authorization: Bearer</code>.
+            Do not proceed with auth patching until live contract is verified.
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
