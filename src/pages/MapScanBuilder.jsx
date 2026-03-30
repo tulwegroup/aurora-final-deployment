@@ -279,35 +279,39 @@ export default function MapScanBuilder() {
           {/* Step 3: submitted */}
           {step === 3 && submittedScan && (
             <Card>
-              <CardContent className="py-4 space-y-2">
+              <CardContent className="py-4 space-y-3">
                 <div className="flex items-center gap-2 text-emerald-700 font-medium">
-                  <CheckCircle className="w-5 h-5" /> Scan Complete
+                  <CheckCircle className="w-5 h-5" /> Scan Queued
                 </div>
+                <p className="text-sm text-muted-foreground">
+                  Your scan has been accepted and is queued for processing. It will appear in Scan History once complete.
+                </p>
                 <div className="space-y-1 text-xs">
+                  {submittedScan.scan_id && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Scan ID</span>
+                      <span className="font-mono">{submittedScan.scan_id?.slice(0,8)}…</span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Scan ID</span>
-                    <span className="font-mono">{submittedScan.scan_id?.slice(0,8)}…</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">AOI ID</span>
-                    <span className="font-mono">{submittedScan.aoi_id?.slice(0,8)}…</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Geometry Hash</span>
-                    <span className="font-mono text-[10px]">{submittedScan.geometry_hash?.slice(0,16)}…</span>
+                    <span className="text-muted-foreground">Status</span>
+                    <span className="capitalize">{submittedScan.status || 'accepted'}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Commodity</span>
-                    <span>{submittedScan.commodity}</span>
+                    <span className="capitalize">{commodity}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Resolution</span>
-                    <span>{submittedScan.resolution}</span>
+                    <span>{resolution}</span>
                   </div>
                 </div>
-                <p className="text-[10px] text-muted-foreground mt-2">
-                  The scan references aoi_id + geometry_hash for full reproducibility.
-                </p>
+                <button
+                  className="text-xs text-primary underline"
+                  onClick={() => navigate('/history')}
+                >
+                  Go to Scan History →
+                </button>
               </CardContent>
             </Card>
           )}
