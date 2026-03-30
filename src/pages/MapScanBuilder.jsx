@@ -18,6 +18,7 @@
 import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { aoi as aoiApi, scans as scansApi } from "../lib/auroraApi";
+import { base44 } from '@/api/base44Client';
 import MapDrawTool from "../components/MapDrawTool";
 import AOIPreviewPanel from "../components/AOIPreviewPanel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -120,7 +121,17 @@ export default function MapScanBuilder() {
           aoi_polygon: geometry,
         });
       }
-      setSubmitted(res);
+      // Save scan record locally so it appears in history
+      const scanId = res?.scan_id || res?.scan_job_id || `local-${Date.now()}`;
+      await base44.entities.ScanJob.create({
+        scan_id: scanId,
+        status: res?.status === 'accepted' ? 'queued' : (res?.status || 'queued'),
+        commodity,
+        resolution,
+        geometry,
+        aoi_id: savedAOI?.aoi_id || null,
+      });
+      setSubmitted({ ...res, scan_id: scanId });
       setStep(3);
     } catch (e) {
       setError(e.message);

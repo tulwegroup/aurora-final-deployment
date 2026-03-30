@@ -12,6 +12,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { base44 } from '@/api/base44Client';
+import { history as historyApi } from '../lib/auroraApi';
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,11 +30,23 @@ export default function ScanHistory() {
     setLoading(true);
     setError(null);
     try {
-      const response = await base44.functions.invoke('auroraProxy', {
-        path: '/api/v1/history',
-        method: 'GET',
-      });
-      setScans(response.data?.scans || []);
+      // Fetch both remote canonical scans and local ScanJob records
+      const [remoteData, localJobs] = await Promise.allSettled([
+        historyApi.list(),
+        base44.entities.ScanJob.list('-created_date', 100),
+      ]);
+
+      const remoteScans = remoteData.status === 'fulfilled' ? (remoteData.value?.scans || []) : [];
+      const local = localJobs.status === 'fulfilled' ? localJobs.value : [];
+
+      // Merge: prefer remote record if scan_id matches, otherwise show local
+      const remoteIds = new Set(remoteScans.map(s => s.scan_id));
+      const localOnly = local.filter(j => !remoteIds.has(j.scan_id));
+      const merged = [
+        ...remoteScans,
+        ...localOnly.map(j => ({ ...j, _local: true })),
+      ];
+      setScans(merged);
     } catch (e) {
       setError(e.message);
     } finally {
