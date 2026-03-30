@@ -1,9 +1,12 @@
 """
 Aurora OSI vNext — Standalone main.py
 Mounts routers dynamically via importlib to avoid import-time failures.
+Auth router has its own prefix="/auth" baked in, so it is mounted with NO extra prefix.
+Login endpoint: POST /auth/login
 """
 import logging
 import importlib
+import traceback
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -25,36 +28,59 @@ app.add_middleware(
 def safe_include(application, router, **kwargs):
     try:
         application.include_router(router, **kwargs)
-        logger.info("router_mounted prefix=%s", kwargs.get("prefix", "/"))
+        logger.info("router_mounted prefix=%s", kwargs.get("prefix", "(router default)"))
     except Exception as exc:
-        logger.error("router_mount_failed prefix=%s error=%s", kwargs.get("prefix", "/"), exc)
+        logger.error("router_mount_failed prefix=%s error=%s", kwargs.get("prefix", "(router default)"), exc)
 
 
 @app.on_event("startup")
 async def on_startup():
     logger.info("aurora_startup version=0.1.0")
-    router_specs = [
-        ("app.api.scan",               "/api/v1/scan",        ["Scan"]),
-        ("app.api.history",            "/api/v1/history",     ["History"]),
-        ("app.api.datasets",           "/api/v1/datasets",    ["Datasets"]),
-        ("app.api.twin",               "/api/v1/twin",        ["Twin"]),
-        ("app.api.admin",              "/api/v1/admin",       ["Admin"]),
-        ("app.api.auth",               "/auth",               ["Auth"]),
-        ("app.api.scan_aoi",           "/api/v1/aoi",         ["AOI"]),
-        ("app.api.export",             "/api/v1/exports",     ["Exports"]),
-        ("app.api.reports",            "/api/v1/reports",     ["Reports"]),
-        ("app.api.portfolio",          "/api/v1/portfolio",   ["Portfolio"]),
-        ("app.api.ground_truth_admin", "/api/v1/gt",          ["Ground Truth"]),
-        ("app.api.map_exports",        "/api/v1/map-exports", ["Map Exports"]),
-        ("app.api.data_room",          "/api/v1/data-room",   ["Data Room"]),
-        ("app.api.webhooks",           "/api/v1/webhooks",    ["Webhooks"]),
+
+    # Routers that carry their own prefix inside the module
+    self_prefixed = [
+        ("app.api.auth",              None,                ["Auth"]),
+        ("app.api.scan_aoi",          None,                ["AOI"]),
+        ("app.api.map_exports",       None,                ["Map Exports"]),
+        ("app.api.reports",           None,                ["Reports"]),
+        ("app.api.portfolio",         None,                ["Portfolio"]),
+        ("app.api.ground_truth_admin",None,                ["Ground Truth"]),
+        ("app.api.data_room",         None,                ["Data Room"]),
+        ("app.api.webhooks",          None,                ["Webhooks"]),
     ]
-    for module_path, prefix, tags in router_specs:
+
+    # Routers that need an explicit prefix
+    explicit_prefix = [
+        ("app.api.scan",     "/api/v1",          ["Scan"]),
+        ("app.api.history",  "/api/v1",          ["History"]),
+        ("app.api.datasets", "/api/v1/datasets", ["Datasets"]),
+        ("app.api.twin",     "/api/v1",          ["Twin"]),
+        ("app.api.admin",    "/api/v1",          ["Admin"]),
+        ("app.api.export",   "/api/v1/exports",  ["Exports"]),
+    ]
+
+    for module_path, prefix, tags in self_prefixed:
+        try:
+            module = importlib.import_module(module_path)
+            if prefix is None:
+                safe_include(app, module.router, tags=tags)
+            else:
+                safe_include(app, module.router, prefix=prefix, tags=tags)
+        except Exception as exc:
+            logger.error(
+                "router_import_failed module=%s error=%s trace=%s",
+                module_path, exc, traceback.format_exc()
+            )
+
+    for module_path, prefix, tags in explicit_prefix:
         try:
             module = importlib.import_module(module_path)
             safe_include(app, module.router, prefix=prefix, tags=tags)
         except Exception as exc:
-            logger.error("router_import_failed module=%s error=%s", module_path, exc)
+            logger.error(
+                "router_import_failed module=%s error=%s trace=%s",
+                module_path, exc, traceback.format_exc()
+            )
 
 
 @app.get("/", tags=["System"])
