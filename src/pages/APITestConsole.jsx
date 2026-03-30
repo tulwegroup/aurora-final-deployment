@@ -16,6 +16,9 @@ const ENDPOINTS = [
   { group: 'System', label: 'GET /version', method: 'GET', path: '/version', description: 'Version registry' },
   { group: 'Scan', label: 'GET /api/v1/scan/active', method: 'GET', path: '/api/v1/scan/active', description: 'List active scans', requiresAuth: true },
   { group: 'History', label: 'GET /api/v1/history', method: 'GET', path: '/api/v1/history', description: 'Scan history list', requiresAuth: true },
+  { group: 'Ground Truth', label: 'GET /api/v1/gt/records', method: 'GET', path: '/api/v1/gt/records', description: 'Ground truth records', requiresAuth: true },
+  { group: 'Ground Truth', label: 'POST /api/v1/gt/records', method: 'POST', path: '/api/v1/gt/records', description: 'Submit ground truth record', requiresAuth: true },
+  { group: 'Ground Truth', label: 'GET /api/v1/gt/calibration/versions', method: 'GET', path: '/api/v1/gt/calibration/versions', description: 'Calibration versions', requiresAuth: true },
   { group: 'Admin', label: 'GET /api/v1/admin/bootstrap-status', method: 'GET', path: '/api/v1/admin/bootstrap-status', description: 'Bootstrap status', requiresAuth: true },
   { group: 'Docs', label: 'GET /docs', method: 'GET', path: '/docs', description: 'OpenAPI Swagger UI' },
 ];

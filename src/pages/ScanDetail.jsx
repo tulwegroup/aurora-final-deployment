@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { base44 } from '@/api/base44Client';
+import { history as historyApi } from "../lib/auroraApi";
 import { Badge } from "@/components/ui/badge";
 import ScanResultsMap from "../components/ScanResultsMap";
 import ScanProgressVisualization from "../components/ScanProgressVisualization";
@@ -12,13 +13,33 @@ export default function ScanDetail() {
   const [scan, setScan] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [scanSource, setScanSource] = useState(null); // 'canonical' or 'job'
 
   useEffect(() => {
     const fetchScan = async () => {
       try {
+        // Try Aurora history API first (canonical scan data)
+        const canonicalScan = await historyApi.get(scanId);
+        if (canonicalScan) {
+          setScan(canonicalScan);
+          setScanSource('canonical');
+          setError(null);
+          setLoading(false);
+          return;
+        }
+      } catch (e) {
+        // Fall back to local ScanJob entity
+      }
+      
+      try {
         const jobs = await base44.entities.ScanJob.filter({ scan_id: scanId });
-        if (jobs?.length > 0) setScan(jobs[0]);
-        else setError('Scan not found');
+        if (jobs?.length > 0) {
+          setScan(jobs[0]);
+          setScanSource('job');
+          setError(null);
+        } else {
+          setError('Scan not found in canonical history or local execution jobs');
+        }
       } catch (e) {
         setError(e.message);
       } finally {
@@ -68,6 +89,7 @@ export default function ScanDetail() {
             </Badge>
             {scan.status === 'completed' && <CheckCircle className="w-4 h-4 text-emerald-600" />}
             {scan.status === 'failed' && <AlertTriangle className="w-4 h-4 text-destructive" />}
+            {scanSource === 'canonical' && <Badge variant="outline" className="text-[10px]">canonical</Badge>}
           </div>
         </div>
       </div>

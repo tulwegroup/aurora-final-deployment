@@ -148,115 +148,64 @@ export default function ScanHistory() {
           </Card>
         )}
 
-        {pendingJobs.map(job => (
-          <Card key={job.id} className="border-l-4 border-l-amber-400">
-            <CardContent className="py-3 px-4 flex items-center gap-4">
-              <div className="flex-1 min-w-0 space-y-0.5">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium capitalize">{job.commodity}</span>
-                  <StatusBadge status={job.status} />
-                  {job.resolution && (
-                    <span className="text-xs text-muted-foreground">{job.resolution}</span>
-                  )}
-                </div>
-                <div className="text-xs text-muted-foreground font-mono">
-                  {job.scan_id || job.id}
-                  {job.scan_id?.startsWith('local-') && (
-                    <span className="ml-2 text-amber-600">(no remote job id)</span>
-                  )}
-                </div>
-                {job.status === 'failed' && job.error_message && (
-                  <div className="flex items-start gap-1 text-xs text-destructive mt-1">
-                    <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
-                    {job.error_message}
-                  </div>
-                )}
-              </div>
-              <div className="text-xs text-muted-foreground whitespace-nowrap">
-                {job.created_date ? new Date(job.created_date).toLocaleDateString() : '—'}
-              </div>
-              {/* Poll status — only for jobs with a real backend scan_id */}
-              {job.scan_id && !job.scan_id.startsWith('local-') && job.status !== 'failed' && (
-                <Button
-                  variant="outline" size="sm"
-                  disabled={!!pollingIds[job.id]}
-                  onClick={() => pollJob(job)}
-                >
-                  {pollingIds[job.id]
-                    ? <Loader2 className="w-3 h-3 animate-spin" />
-                    : <RefreshCw className="w-3 h-3" />}
-                  <span className="ml-1 text-xs">Check</span>
-                </Button>
-              )}
-              {/* No link to canonical detail — job is NOT a canonical scan */}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+        {pendingJobs.map(job => {
+         const isCanonicalComplete = job._canonical_complete;
+         const canonicalScan = isCanonicalComplete 
+           ? filteredCanonical.find(s => s.scan_id === job.scan_id)
+           : null;
 
-      {/* ── SECTION 2: Completed Canonical Scans ── */}
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <CheckCircle className="w-4 h-4 text-emerald-600" />
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Completed Canonical Scans
-          </h2>
-          <span className="text-xs text-muted-foreground">({filteredCanonical.length})</span>
-        </div>
-
-        {canonicalError && (
-          <APIOffline
-            error={canonicalError}
-            endpoint="GET /api/v1/history"
-            onRetry={load}
-          />
-        )}
-
-        {!loading && !canonicalError && filteredCanonical.length === 0 && (
-          <Card>
-            <CardContent className="py-6 text-center text-muted-foreground text-sm">
-              No completed canonical scans yet. Submitted scans appear here once the Aurora pipeline completes.
-            </CardContent>
-          </Card>
-        )}
-
-        {filteredCanonical.map(scan => (
-          <Card key={scan.scan_id} className="hover:border-primary/40 transition-colors border-l-4 border-l-emerald-500">
-            <CardContent className="py-3 px-4 flex items-center gap-4">
-              <div className="flex-1 min-w-0 space-y-0.5">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium capitalize">{scan.commodity}</span>
-                  <Badge variant="default">completed</Badge>
-                  {scan.gee_sourced === false && (
-                    <Badge variant="outline" className="text-[10px]">simulated</Badge>
-                  )}
-                </div>
-                <div className="text-xs text-muted-foreground font-mono">{scan.scan_id}</div>
-              </div>
-              <div className="text-right">
-                <div className="text-sm font-medium tabular-nums">
-                  {scan.display_acif_score != null
-                    ? `${(scan.display_acif_score * 100).toFixed(1)}%`
-                    : '—'}
-                </div>
-                <div className="text-xs text-muted-foreground">ACIF</div>
-              </div>
-              <div className="text-right">
-                <div className="text-sm font-medium tabular-nums">{scan.tier_1_count ?? '—'}</div>
-                <div className="text-xs text-muted-foreground">Tier 1</div>
-              </div>
-              <div className="text-xs text-muted-foreground whitespace-nowrap">
-                {scan.completed_at ? new Date(scan.completed_at).toLocaleDateString() : '—'}
-              </div>
-              {/* ONLY canonical scans link to the canonical detail page */}
-              <Link to={`/history/${scan.scan_id}`}>
-                <Button variant="ghost" size="sm">
-                  <ArrowRight className="w-4 h-4" />
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
-        ))}
+         return (
+           <Card key={job.id} className={isCanonicalComplete ? 'border-l-4 border-l-emerald-500' : 'border-l-4 border-l-amber-400'}>
+             <CardContent className="py-3 px-4 flex items-center gap-4">
+               <div className="flex-1 min-w-0 space-y-0.5">
+                 <div className="flex items-center gap-2 flex-wrap">
+                   <span className="font-medium capitalize">{job.commodity}</span>
+                   <StatusBadge status={job.status} />
+                   {job.resolution && (
+                     <span className="text-xs text-muted-foreground">{job.resolution}</span>
+                   )}
+                 </div>
+                 <div className="text-xs text-muted-foreground font-mono">
+                   {job.scan_id || job.id}
+                   {job.scan_id?.startsWith('local-') && (
+                     <span className="ml-2 text-amber-600">(no remote job id)</span>
+                   )}
+                 </div>
+                 {job.status === 'failed' && job.error_message && (
+                   <div className="flex items-start gap-1 text-xs text-destructive mt-1">
+                     <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
+                     {job.error_message}
+                   </div>
+                 )}
+               </div>
+               <div className="text-xs text-muted-foreground whitespace-nowrap">
+                 {job.created_date ? new Date(job.created_date).toLocaleDateString() : '—'}
+               </div>
+               {/* Completed — link to canonical detail */}
+               {isCanonicalComplete && canonicalScan && (
+                 <Link to={`/history/${canonicalScan.scan_id}`}>
+                   <Button variant="ghost" size="sm">
+                     <ArrowRight className="w-4 h-4" />
+                   </Button>
+                 </Link>
+               )}
+               {/* Poll status — only for jobs with a real backend scan_id and not yet canonical */}
+               {!isCanonicalComplete && job.scan_id && !job.scan_id.startsWith('local-') && job.status !== 'failed' && (
+                 <Button
+                   variant="outline" size="sm"
+                   disabled={!!pollingIds[job.id]}
+                   onClick={() => pollJob(job)}
+                 >
+                   {pollingIds[job.id]
+                     ? <Loader2 className="w-3 h-3 animate-spin" />
+                     : <RefreshCw className="w-3 h-3" />}
+                   <span className="ml-1 text-xs">Check</span>
+                 </Button>
+               )}
+             </CardContent>
+           </Card>
+         );
+        })}
       </div>
     </div>
   );
