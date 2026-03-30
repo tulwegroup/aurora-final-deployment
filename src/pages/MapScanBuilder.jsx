@@ -17,7 +17,7 @@
  */
 import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { aoi as aoiApi } from "../lib/auroraApi";
+import { aoi as aoiApi, scans as scansApi } from "../lib/auroraApi";
 import MapDrawTool from "../components/MapDrawTool";
 import AOIPreviewPanel from "../components/AOIPreviewPanel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -104,14 +104,22 @@ export default function MapScanBuilder() {
   }
 
   async function submitScan() {
-    if (!savedAOI?.aoi_id) return;
+    if (!geometry) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await aoiApi.submitScan(savedAOI.aoi_id, {
-        commodity,
-        resolution,
-      });
+      let res;
+      // Try AOI-based submission first, fall back to direct polygon scan
+      try {
+        res = await aoiApi.submitScan(savedAOI.aoi_id, { commodity, resolution });
+      } catch {
+        res = await scansApi.submitPolygon({
+          commodity,
+          scan_tier: resolution,
+          environment: 'onshore',
+          aoi_polygon: geometry,
+        });
+      }
       setSubmitted(res);
       setStep(3);
     } catch (e) {
