@@ -35,6 +35,7 @@ import DynamicReportPage from './pages/DynamicReportPage';
 import APIHealthDiagnostics from './pages/APIHealthDiagnostics';
 import EndpointTestDashboard from './pages/EndpointTestDashboard';
 import VectorIntegrityReport from './pages/VectorIntegrityReport';
+import BackendDeploymentOps from './pages/BackendDeploymentOps';
 // Add page imports here
 
 const AuthenticatedApp = () => {
@@ -98,6 +99,7 @@ const AuthenticatedApp = () => {
         <Route path="/health" element={<APIHealthDiagnostics />} />
         <Route path="/endpoint-tests" element={<EndpointTestDashboard />} />
         <Route path="/vector-audit" element={<VectorIntegrityReport />} />
+        <Route path="/backend-ops" element={<BackendDeploymentOps />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
