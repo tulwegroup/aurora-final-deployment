@@ -1,4 +1,4 @@
-"""Aurora OSI vNext API Ã¢ÂÂ Complete Working Stub"""
+"""Aurora OSI vNext API ÃÂ¢ÃÂÃÂ Complete Working Stub"""
 import os, time, uuid, bcrypt, jwt
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
