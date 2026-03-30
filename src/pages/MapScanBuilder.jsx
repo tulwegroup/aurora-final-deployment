@@ -137,6 +137,11 @@ export default function MapScanBuilder() {
       });
       setSubmitted({ ...res, scan_id: scanId });
       setStep(3);
+
+      // Auto-navigate to live scan viewer after 2 seconds
+      setTimeout(() => {
+        navigate(`/scan/live/${scanId}`);
+      }, 2000);
     } catch (e) {
       setError(e.message);
     } finally {

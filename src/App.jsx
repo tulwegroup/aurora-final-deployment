@@ -30,7 +30,6 @@ import UICoverage from './pages/UICoverage';
 import IntelligenceDossier from './pages/IntelligenceDossier';
 import InvestorDossier from './pages/InvestorDossier';
 import LiveScanConsole from './pages/LiveScanConsole';
-import LiveScanViewer from './pages/LiveScanViewer';
 import DynamicReportPage from './pages/DynamicReportPage';
 import APIHealthDiagnostics from './pages/APIHealthDiagnostics';
 import EndpointTestDashboard from './pages/EndpointTestDashboard';
@@ -92,8 +91,8 @@ const AuthenticatedApp = () => {
         <Route path="/api-console" element={<APITestConsole />} />
         <Route path="/data-room" element={<DataRoom />} />
         <Route path="/coverage" element={<UICoverage />} />
-        <Route path="/live-scan" element={<LiveScanConsole />} />
-        <Route path="/scan/live/:scanId" element={<LiveScanViewer />} />
+        <Route path="/scan/live/:scanId" element={<LiveScanConsole />} />
+        <Route path="/scan/live/:jobId" element={<LiveScanConsole />} />
         <Route path="/report/:scanId" element={<DynamicReportPage />} />
         <Route path="/report" element={<DynamicReportPage />} />
         <Route path="/health" element={<APIHealthDiagnostics />} />

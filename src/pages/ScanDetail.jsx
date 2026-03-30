@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { base44 } from '@/api/base44Client';
 import { history as historyApi } from "../lib/auroraApi";
@@ -11,54 +12,57 @@ import { Loader2, ArrowLeft, FileText, Map, Lock, CheckCircle, AlertTriangle, Re
 export default function ScanDetail() {
   const { scanId } = useParams();
   const [scan, setScan] = useState(null);
+  const [cells, setCells] = useState([]);
+  const [datasets, setDatasets] = useState(null);
+  const [twinMetadata, setTwinMetadata] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [scanSource, setScanSource] = useState(null); // 'canonical' or 'job'
+  const [scanSource, setScanSource] = useState(null);
 
   useEffect(() => {
     const fetchScan = async () => {
       try {
-        // Try Aurora history API first (canonical scan data)
+        // CANONICAL ONLY — reject execution jobs
         const canonicalScan = await historyApi.get(scanId);
-        if (canonicalScan) {
-          setScan(canonicalScan);
-          setScanSource('canonical');
-          setError(null);
-          setLoading(false);
-          return;
+        setScan(canonicalScan);
+        setScanSource("canonical");
+        setError(null);
+
+        // Fetch cell-level details and datasets
+        const [cellsRes, datasetsRes, twinRes] = await Promise.allSettled([
+          historyApi.cells(scanId),
+          base44.functions
+            .invoke("auroraProxy", {
+              method: "GET",
+              path: `/api/v1/datasets/summary/${scanId}`,
+            })
+            .then((r) => r.data?.data),
+          base44.functions
+            .invoke("auroraProxy", {
+              method: "GET",
+              path: `/api/v1/twin/${scanId}`,
+            })
+            .then((r) => r.data?.data),
+        ]);
+
+        if (cellsRes.status === "fulfilled") {
+          setCells(cellsRes.value?.features || []);
+        }
+        if (datasetsRes.status === "fulfilled") {
+          setDatasets(datasetsRes.value);
+        }
+        if (twinRes.status === "fulfilled") {
+          setTwinMetadata(twinRes.value);
         }
       } catch (e) {
-        // Fall back to local ScanJob entity
-      }
-      
-      try {
-        const jobs = await base44.entities.ScanJob.filter({ scan_id: scanId });
-        if (jobs?.length > 0) {
-          setScan(jobs[0]);
-          setScanSource('job');
-          setError(null);
-        } else {
-          setError('Scan not found in canonical history or local execution jobs');
-        }
-      } catch (e) {
-        setError(e.message);
+        // No fallback to execution jobs — strict separation
+        setError(`${e.message} (Must be a completed canonical scan)`);
       } finally {
         setLoading(false);
       }
     };
-    
+
     fetchScan();
-    
-    // Poll every 2 seconds while running
-    const interval = setInterval(() => {
-      base44.entities.ScanJob.filter({ scan_id: scanId })
-        .then(jobs => {
-          if (jobs?.length > 0) setScan(jobs[0]);
-        })
-        .catch(() => {});
-    }, 2000);
-    
-    return () => clearInterval(interval);
   }, [scanId]);
 
   if (!scan && loading) return <div className="p-6 flex items-center gap-2 text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Loading scan…</div>;
@@ -161,9 +165,90 @@ export default function ScanDetail() {
             <div><span className="text-muted-foreground text-xs">Resolution</span><div className="font-medium capitalize">{scan.resolution || '—'}</div></div>
             <div><span className="text-muted-foreground text-xs">Pipeline</span><div className="font-medium font-mono text-xs">{scan.pipeline_version || '—'}</div></div>
             <div><span className="text-muted-foreground text-xs">Completed</span><div className="font-medium">{scan.completed_at ? new Date(scan.completed_at).toLocaleString() : (isRunning ? 'In progress…' : '—')}</div></div>
+            <div><span className="text-muted-foreground text-xs">Geographic Bounds</span><div className="font-mono text-xs">{scan.min_lat?.toFixed(3)}, {scan.min_lon?.toFixed(3)} → {scan.max_lat?.toFixed(3)}, {scan.max_lon?.toFixed(3)}</div></div>
           </div>
         </CardContent>
       </Card>
+
+      {/* SECTION 2: Geological Gates */}
+      {scan.geological_gates && (
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Geological Gates</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            {Object.entries(scan.geological_gates).map(([gateName, gateResult]) => {
+              const isPass = gateResult.status === "PASS" || gateResult.pass_rate > 0.5;
+              return (
+                <div key={gateName} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div>
+                    <div className="font-medium capitalize text-sm">{gateName.replace(/_/g, " ")}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {gateResult.confidence ? `Confidence: ${(gateResult.confidence * 100).toFixed(1)}%` : `Pass rate: ${(gateResult.pass_rate * 100).toFixed(1)}%`}
+                    </div>
+                  </div>
+                  <Badge variant={isPass ? "default" : "outline"}>
+                    {isPass ? "PASS" : "WEAK"}
+                  </Badge>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* SECTION 3: ACIF Modality Averages */}
+      {scan.modality_contributions && (
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">ACIF Modality Averages</CardTitle></CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {Object.entries(scan.modality_contributions).map(([modality, value]) => (
+                <div key={modality} className="border rounded p-3">
+                  <div className="text-xs text-muted-foreground uppercase tracking-wide">{modality.replace(/_/g, " ")}</div>
+                  <div className="text-xl font-bold mt-1">{(value * 100).toFixed(1)}%</div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* SECTION 4: Digital Twin Metadata */}
+      {twinMetadata && (
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Digital Twin — Subsurface Profile</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex justify-between"><span className="text-muted-foreground">Voxel Dimensions</span><span className="font-mono">{twinMetadata.voxel_size_m}m</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Total Voxels</span><span className="font-mono">{twinMetadata.voxel_count || "—"}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Max Depth</span><span className="font-mono">{twinMetadata.max_depth_m || "—"}m</span></div>
+            {twinMetadata.download_url && (
+              <a href={twinMetadata.download_url} target="_blank" rel="noopener noreferrer" className="text-primary underline text-xs mt-2 block">
+                Download Twin Data →
+              </a>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* SECTION 5: GIS/Raster Spec */}
+      {datasets && (
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">GIS / Raster Specification</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex justify-between"><span className="text-muted-foreground">CRS</span><span className="font-mono">{datasets.crs || "EPSG:4326"}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Pixel Size</span><span className="font-mono">{datasets.pixel_size_m || "—"}m</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Available Bands</span><span className="font-mono text-xs">{(datasets.bands || []).join(", ") || "—"}</span></div>
+            {datasets.export_formats && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {datasets.export_formats.map((fmt) => (
+                  <a key={fmt} href={`/api/v1/datasets/export/${scanId}?format=${fmt}`} target="_blank" rel="noopener noreferrer" className="text-xs text-primary underline">
+                    {fmt.toUpperCase()}
+                  </a>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Insufficient Data Failure Mode */}
       {isInsufficientData && (
