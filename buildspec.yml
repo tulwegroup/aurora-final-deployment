@@ -2,15 +2,14 @@ version: 0.2
 phases:
   pre_build:
     commands:
-      - echo Logging in to Amazon ECR...
-      - aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 368331615566.dkr.ecr.us-east-1.amazonaws.com
+      - echo "Logging in to ECR..."
+      - aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin us-east-1.dkr.ecr.amazonaws.com
   build:
     commands:
-      - echo Building Docker image...
-      - docker build -t aurora-api -f Dockerfile .
-      - docker tag aurora-api:latest 368331615566.dkr.ecr.us-east-1.amazonaws.com/aurora-api:latest
+      - echo "Building Aurora image..."
+      - docker build -t aurora-api:latest .
+      - docker tag aurora-api:latest us-east-1.dkr.ecr.amazonaws.com/aurora-api:latest
   post_build:
     commands:
-      - echo Pushing image to ECR...
-      - docker push 368331615566.dkr.ecr.us-east-1.amazonaws.com/aurora-api:latest
-      - echo Build complete.
+      - echo "Pushing to ECR..."
+      - docker push us-east-1.dkr.ecr.amazonaws.com/aurora-api:latest
