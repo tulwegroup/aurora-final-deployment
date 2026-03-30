@@ -43,7 +43,7 @@ function buildInlineBuildspec(githubToken) {
     `      - git clone ${cloneUrl} repo`,
     '      - cd repo',
     `      - aws ecr get-login-password --region ${REGION} | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com`,
-    '      - COMMIT_SHA=$(git -C repo rev-parse --short HEAD)',
+    '      - COMMIT_SHA=$(git rev-parse --short HEAD)',
     '  build:',
     '    commands:',
     '      - cd repo',
