@@ -9,7 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install --no-cache-dir \
     fastapi "uvicorn[standard]" asyncpg psycopg2-binary \
     structlog pydantic-settings alembic sqlalchemy \
-    python-jose passlib python-multipart httpx aiofiles
+    python-jose passlib python-multipart httpx aiofiles \
+    bcrypt PyJWT cryptography
 
 COPY aurora_vnext/app /srv/app
 
