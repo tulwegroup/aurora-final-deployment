@@ -148,9 +148,9 @@ export default function Dashboard() {
           <APIOffline endpoint="GET /api/v1/scan/active" onRetry={load} hint="Aurora API not yet responding." />
         )}
 
-        {!loading && active?.active_scans && (
+        {!loading && !error && active && (
           <>
-            {active.active_scans.length === 0 ? (
+            {!active.active_scans || active.active_scans.length === 0 ? (
               <Card>
                 <CardContent className="py-8 text-center text-muted-foreground text-sm space-y-2">
                   <div className="text-3xl">🛰</div>
