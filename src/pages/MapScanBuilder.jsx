@@ -19,6 +19,7 @@ import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { aoi as aoiApi, scans as scansApi } from "../lib/auroraApi";
 import { base44 } from '@/api/base44Client';
+// base44 imported to persist ScanJob execution records (not canonical scans)
 import MapDrawTool from "../components/MapDrawTool";
 import AOIPreviewPanel from "../components/AOIPreviewPanel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -121,11 +122,13 @@ export default function MapScanBuilder() {
           aoi_polygon: geometry,
         });
       }
-      // Save scan record locally so it appears in history
-      const scanId = res?.scan_id || res?.scan_job_id || `local-${Date.now()}`;
+      // Persist execution job record — this is a ScanJob (queued state), NOT a canonical scan.
+      // It will appear in the "Execution Jobs" section of Scan History only.
+      // Once the Aurora pipeline completes it will surface as a canonical scan.
+      const scanId = res?.scan_id || res?.scan_job_id || null;
       await base44.entities.ScanJob.create({
         scan_id: scanId,
-        status: res?.status === 'accepted' ? 'queued' : (res?.status || 'queued'),
+        status: 'queued',
         commodity,
         resolution,
         geometry,
