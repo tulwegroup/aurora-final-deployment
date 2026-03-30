@@ -1,31 +1,16 @@
 """Aurora OSI vNext API — Complete Working Stub"""
-import os
-import time
-import uuid
-import bcrypt
-import jwt
+import os, time, uuid, bcrypt, jwt
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 app = FastAPI(title="Aurora OSI API", version="0.1.0")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 ADMIN_EMAIL = os.environ.get("AURORA_ADMIN_USER", "admin@aurora-osi.com")
 ADMIN_PASS = os.environ.get("AURORA_ADMIN_PASS", "")
 JWT_SECRET = os.environ.get("AURORA_JWT_SECRET", "dev-key")
-
-_admin_hash = ""
-if ADMIN_PASS:
-    _admin_hash = bcrypt.hashpw(ADMIN_PASS.encode(), bcrypt.gensalt(rounds=12)).decode()
-
+_admin_hash = bcrypt.hashpw(ADMIN_PASS.encode(), bcrypt.gensalt(rounds=12)).decode() if ADMIN_PASS else ""
 _revoked = set()
 
 class LoginRequest(BaseModel):
@@ -78,11 +63,9 @@ async def logout(authorization: str = Header(None)):
         try:
             data = jwt.decode(authorization[7:], JWT_SECRET, algorithms=["HS256"])
             _revoked.add(data.get("jti", ""))
-        except:
-            pass
+        except: pass
     return {"logged_out": True}
 
-# Scan endpoints
 @app.post("/api/v1/scan/grid")
 @app.post("/api/v1/scan/polygon")
 async def submit_scan():
@@ -96,7 +79,6 @@ async def active_scans():
 async def scan_status(scan_id: str):
     return {"scan_id": scan_id, "status": "completed", "progress": 100}
 
-# History endpoints
 @app.get("/api/v1/history")
 async def list_history():
     return {"scans": [], "total": 0}
@@ -109,7 +91,6 @@ async def get_history(scan_id: str):
 async def get_cells(scan_id: str):
     return {"cells": [], "total": 0}
 
-# Datasets
 @app.get("/api/v1/datasets/summary/{scan_id}")
 async def datasets_summary(scan_id: str):
     return {"summary": {}}
@@ -118,7 +99,6 @@ async def datasets_summary(scan_id: str):
 async def datasets_geojson(scan_id: str):
     return {"type": "FeatureCollection", "features": []}
 
-# Twin
 @app.get("/api/v1/twin/{scan_id}")
 async def twin_metadata(scan_id: str):
     return {"twin": {}}
@@ -127,7 +107,6 @@ async def twin_metadata(scan_id: str):
 async def twin_query(scan_id: str):
     return {"result": None}
 
-# Admin
 @app.get("/api/v1/admin/users")
 async def admin_users():
     return {"users": []}
@@ -136,7 +115,6 @@ async def admin_users():
 async def bootstrap_status():
     return {"bootstrapped": True, "admin_email": ADMIN_EMAIL}
 
-# AOI
 @app.post("/api/v1/aoi/validate")
 async def aoi_validate():
     return {"valid": True, "area_km2": 100.0}
@@ -149,7 +127,6 @@ async def aoi_save():
 async def aoi_get(aoi_id: str):
     return {"aoi_id": aoi_id, "status": "saved"}
 
-# Map Exports
 @app.get("/api/v1/exports/layers")
 async def export_layers():
     return {"layers": ["tier1", "tier2", "tier3"]}
@@ -160,7 +137,6 @@ async def export_layers():
 async def export_map(scan_id: str):
     return {"download_url": f"https://api.aurora-osi.com/exports/{scan_id}/download"}
 
-# Reports
 @app.post("/api/v1/reports/{scan_id}")
 async def generate_report(scan_id: str):
     return {"report_id": str(uuid.uuid4()), "status": "generated"}
@@ -169,7 +145,6 @@ async def generate_report(scan_id: str):
 async def list_reports(scan_id: str):
     return {"reports": []}
 
-# Portfolio
 @app.get("/api/v1/portfolio")
 async def list_portfolio():
     return {"entries": []}
@@ -178,7 +153,6 @@ async def list_portfolio():
 async def portfolio_snapshot():
     return {"snapshot": None}
 
-# Data Room
 @app.post("/api/v1/data-room/packages")
 async def dr_create_package():
     return {"package_id": str(uuid.uuid4()), "status": "created"}
@@ -187,7 +161,6 @@ async def dr_create_package():
 async def dr_list_packages():
     return {"packages": []}
 
-# Ground Truth
 @app.get("/api/v1/gt/records")
 async def gt_records():
     return {"records": []}
