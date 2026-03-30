@@ -37,11 +37,11 @@ const COMMODITY_GROUPS = [
 ];
 
 // Aurora scan tier enum values (BOOTSTRAP/SMART/PREMIUM)
-// Maps to cost/resolution tiers — BOOTSTRAP=coarse screening, SMART=regional, PREMIUM=drill-target
+// Display labels show cell resolution in km/m as the user expects
 const RESOLUTION_OPTIONS = [
-  { value: "BOOTSTRAP", label: "Bootstrap — coarse global screening" },
-  { value: "SMART",     label: "Smart — regional refinement (recommended)" },
-  { value: "PREMIUM",   label: "Premium — drill-target scale" },
+  { value: "BOOTSTRAP", label: "BOOTSTRAP — ~5 km cells (coarse global screening)" },
+  { value: "SMART",     label: "SMART — ~1 km cells (regional refinement, recommended)" },
+  { value: "PREMIUM",   label: "PREMIUM — ~250 m cells (drill-target scale)" },
 ];
 
 const STEPS = ["Draw AOI", "Validate", "Preview", "Submit"];
