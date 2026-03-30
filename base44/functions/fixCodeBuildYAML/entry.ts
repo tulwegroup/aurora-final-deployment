@@ -1,5 +1,5 @@
 /**
- * fixCodeBuildYAML — Fix buildspec with proper YAML syntax.
+ * fixCodeBuildYAML — Fix buildspec with simple inline commands.
  * ADMIN ONLY.
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
@@ -20,9 +20,6 @@ Deno.serve(async (req) => {
     const awsSecret = Deno.env.get('AWS_SECRET_ACCESS_KEY');
     if (!awsKeyId || !awsSecret) return Response.json({ error: 'AWS credentials not set' }, { status: 500 });
 
-    // Base64-encoded main.py to avoid YAML syntax issues
-    const mainPyB64 = "aW1wb3J0IG9zLCB0aW1lLCB1dWlkLCBiY3J5cHQsIGp3dApmcm9tIGZhc3RhcGkgaW1wb3J0IEZhc3RBUEksIEhlYWRlciwgSFRUUEV4Y2VwdGlvbgpmcm9tIGZhc3RhcGkubWlkZGxld2FyZS5jb3JzIGltcG9ydCBDT1JTTWlkZGxld2FyZQpmcm9tIHB5ZGFudGljIGltcG9ydCBCYXNlTW9kZWwKCmFwcCA9IEZhc3RBUEkodGl0bGU9IkF1cm9yYSBPU0kgQVBJIiwgdmVyc2lvbj0iMC4xLjAiKQphcHAuYWRkX21pZGRsZXdhcmUoCiAgICBDT1JTTWlkZGxld2FyZSwKICAgIGFsbG93X29yaWdpbnM9WyIqIl0sCiAgICBhbGxvd19jcmVkZW50aWFscz1UcnVlLAogICAgYWxsb3dfbWV0aG9kcz1bIioiXSwKICAgIGFsbG93X2hlYWRlcnM9WyIqIl0sCikKCkFETUlOX0VNQUlMID0gb3MuZW52aXJvbi5nZXQoIkFVUk9SQV9BRE1JTl9VU0VSIiwgImFkbWluQGF1cm9yYS1vc2kuY29tIikKQURNSU5fUEFTUyA9IG9zLmVudmlyb24uZ2V0KCJBVVJPUMFEVEVTVF9BRE1JTl9QQVNTIiwgIiIpCkpXVF9TRUNSRVQgPSBvcy5lbnZpcm9uLmdldCgiQVVST1JBX0pXVF9TRUNSRVQiLCAiZGV2LWtleSIpCl9hZG1pbl9oYXNoID0gYmNyeXB0Lmhhc2hwdyhBRE1JTl9QQVNTLmVuY29kZSgpLCBiY3J5cHQuZ2Vuc2FsdChyb3VuZHM9MTIpKS5kZWNvZGUoKSBpZiBBRE1JTl9QQVNTIGVsc2UgIiIKX3Jldm9rZWQgPSBzZXQoKQoKY2xhc3MgTG9naW5SZXF1ZXN0KEJhc2VNb2RlbCk6CiAgICBlbWFpbDogc3RyCiAgICBwYXNzd29yZDogc3RyCgpAYXBwLmdldCgiLyIpCkFzeW5jIGRlZiBhcHAvX1tfX19dezEwMH1fX19eKTogcmV0dXJuIHsic3RhdHVzIjogImFsaXZlIn0KKGFWUFAVQVBQFACKCFVUVE0gIfAokH3Lm9zLnNwbGl0AFFYQDEuMC4wIjogQWFkbWluLWF1cm9yYS1vLmNvbSIsCkBhcHAuZ2V0KCIVKPT4gImluIlTpbVnkCioKSkFXVDI0TnVNNjoyODEyODQwLXNlY3JldC1rZXkiLAogICAgIlRFU1RJTkciOiBGYWxzZQp9Cgpmcm9tIGZhc3RhcGkgaW1wb3J0IEhUVFBFeGNlcHRpb24KCJVVREVGSU5FRCBSRVNQT05TRSBBSVBJIEVORFBPSU5UCgpAYXBwLmdldCgiL2hlYWx0aCIpCkBhcHAuZ2V0KCIVZWFSVGF0dXMiOiAiYWxpdmUiLCAiYXV0aF9lbmZvcmNlZCI6IFRydWV9Cgpba3BwLmdldCgiL3ZlcnNpb24iKQogIHJldHVybiB7ImFwcCI6ICJBVXJVCMZUMCISMCRPQ0kvT1NJIiwgInZlcnNpb24iOiAiMC4xLjAifQp9Cgpd";
-
     const buildspec = `version: 0.2
 phases:
   pre_build:
@@ -31,27 +28,80 @@ phases:
       - aws ecr get-login-password --region ${REGION} | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com
   build:
     commands:
-      - echo "Creating Dockerfile..."
       - mkdir -p /tmp/build
-      - cat > /tmp/build/Dockerfile << 'DOCKERFILE_END'
-FROM public.ecr.aws/docker/library/python:3.11-slim
+      - cd /tmp/build
+      - cat > Dockerfile << 'EOF'
+FROM python:3.11-slim
 WORKDIR /srv
-RUN pip install --no-cache-dir fastapi uvicorn bcrypt PyJWT pydantic httpx
-COPY main.py /srv/main.py
+RUN pip install fastapi uvicorn bcrypt pyjwt pydantic
+COPY app.py /srv/app.py
 EXPOSE 8000
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-DOCKERFILE_END
-      - echo "Decoding and creating main.py..."
-      - echo '${mainPyB64}' | base64 -d > /tmp/build/main.py
-      - cat /tmp/build/main.py
-      - echo "Building image..."
-      - docker build -t aurora-api:latest -f /tmp/build/Dockerfile /tmp/build
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+EOF
+      - cat > app.py << 'EOF'
+import os, time, uuid
+import bcrypt, jwt
+from fastapi import FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+
+app = FastAPI()
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+ADMIN_EMAIL = os.getenv("AURORA_ADMIN_USER", "admin@aurora-osi.com")
+ADMIN_PASS = os.getenv("AURORA_ADMIN_PASS", "")
+JWT_SECRET = os.getenv("AURORA_JWT_SECRET", "dev-key")
+_admin_hash = bcrypt.hashpw(ADMIN_PASS.encode(), bcrypt.gensalt(rounds=12)).decode() if ADMIN_PASS else ""
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+@app.get("/")
+def root():
+    return {"status": "alive"}
+
+@app.get("/health")
+@app.get("/health/live")
+def health():
+    return {"status": "alive", "app": "Aurora OSI API"}
+
+@app.post("/api/v1/auth/login")
+def login(body: LoginRequest):
+    if not body.email or body.email.lower() != ADMIN_EMAIL.lower():
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if not _admin_hash:
+        raise HTTPException(status_code=503, detail="Auth not configured")
+    try:
+        ok = bcrypt.checkpw(body.password.encode(), _admin_hash.encode())
+    except:
+        ok = False
+    if not ok:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    jti = str(uuid.uuid4())
+    now = int(time.time())
+    token = jwt.encode({"sub": "admin", "email": ADMIN_EMAIL, "role": "admin", "jti": jti, "iat": now, "exp": now + 900}, JWT_SECRET, algorithm="HS256")
+    return {"access_token": token, "refresh_token": str(uuid.uuid4()), "expires_in": 900}
+
+@app.get("/api/v1/auth/me")
+def me(authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing token")
+    try:
+        data = jwt.decode(authorization[7:], JWT_SECRET, algorithms=["HS256"])
+    except:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return {"user_id": data["sub"], "email": data["email"], "role": data["role"]}
+
+@app.post("/api/v1/auth/logout")
+def logout(authorization: str = Header(None)):
+    return {"logged_out": True}
+EOF
+      - docker build -t aurora-api:latest .
       - docker tag aurora-api:latest ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${ECR_REPO}:latest
   post_build:
     commands:
-      - echo "Pushing to ECR..."
       - docker push ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${ECR_REPO}:latest
-      - echo "Build complete"
 `;
 
     const awsCreds = { region: REGION, credentials: { accessKeyId: awsKeyId, secretAccessKey: awsSecret } };
@@ -76,7 +126,7 @@ DOCKERFILE_END
       status: 'buildspec_fixed',
       build_id: buildRes.build?.id,
       build_status: buildRes.build?.buildStatus,
-      message: 'Buildspec YAML corrected, build started',
+      message: 'Buildspec YAML fixed with clean heredoc syntax',
       estimated_duration: '5-10 minutes',
     });
 
