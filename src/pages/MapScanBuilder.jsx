@@ -36,11 +36,12 @@ const COMMODITY_GROUPS = [
   { group: "Hydrocarbons",     items: ["petroleum"] },
 ];
 
+// Aurora scan tier enum values (BOOTSTRAP/SMART/PREMIUM)
+// Maps to cost/resolution tiers — BOOTSTRAP=coarse screening, SMART=regional, PREMIUM=drill-target
 const RESOLUTION_OPTIONS = [
-  { value: "fine",   label: "Fine (~1 km²/cell)" },
-  { value: "medium", label: "Medium (~5 km²/cell)" },
-  { value: "coarse", label: "Coarse (~25 km²/cell)" },
-  { value: "survey", label: "Survey (~100 km²/cell)" },
+  { value: "BOOTSTRAP", label: "Bootstrap — coarse global screening" },
+  { value: "SMART",     label: "Smart — regional refinement (recommended)" },
+  { value: "PREMIUM",   label: "Premium — drill-target scale" },
 ];
 
 const STEPS = ["Draw AOI", "Validate", "Preview", "Submit"];
@@ -53,7 +54,7 @@ export default function MapScanBuilder() {
   const [savedAOI, setSavedAOI]       = useState(null);
   const [estimate, setEstimate]       = useState(null);
   const [commodity, setCommodity]     = useState("gold");
-  const [resolution, setResolution]   = useState("medium");
+  const [resolution, setResolution]   = useState("SMART");
   const [submittedScan, setSubmitted] = useState(null);
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState(null);
@@ -117,8 +118,8 @@ export default function MapScanBuilder() {
       } catch {
         res = await scansApi.submitPolygon({
           commodity,
-          scan_tier: resolution,
-          environment: 'onshore',
+          scan_tier: resolution,          // BOOTSTRAP | SMART | PREMIUM
+          environment: 'ONSHORE',         // uppercase enum as Aurora requires
           aoi_polygon: geometry,
         });
       }

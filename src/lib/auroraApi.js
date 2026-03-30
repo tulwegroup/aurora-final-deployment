@@ -9,6 +9,8 @@ import { base44 } from '@/api/base44Client';
 export const API_ROOT = 'https://api.aurora-osi.com';
 
 let _accessToken = null;
+let _tokenFetchPromise = null;
+let _tokenExpiry = 0;
 
 export function setAccessToken(token) {
   _accessToken = token;
@@ -16,10 +18,37 @@ export function setAccessToken(token) {
 
 export function clearAccessToken() {
   _accessToken = null;
+  _tokenExpiry = 0;
+}
+
+/**
+ * Obtain a valid Aurora RS256 JWT.
+ * Uses the auroraAuth backend function which caches and refreshes tokens.
+ * Falls back gracefully — if auth fails, requests are sent unauthenticated
+ * (the stub deployed API doesn't require auth anyway).
+ */
+async function ensureToken() {
+  const now = Date.now() / 1000;
+  if (_accessToken && _tokenExpiry > now + 60) return;
+  if (_tokenFetchPromise) { await _tokenFetchPromise; return; }
+  _tokenFetchPromise = (async () => {
+    try {
+      const res = await base44.functions.invoke('auroraAuth', {});
+      if (res.data?.access_token) {
+        _accessToken = res.data.access_token;
+        _tokenExpiry = now + 840; // 14 min
+      }
+    } catch (e) {
+      console.warn('[auroraApi] Auth token fetch failed:', e.message);
+    } finally {
+      _tokenFetchPromise = null;
+    }
+  })();
+  await _tokenFetchPromise;
 }
 
 async function request(method, path, body = null) {
-  console.log(`[Aurora Proxy] ${method} ${path}`);
+  await ensureToken();
   const res = await base44.functions.invoke('auroraProxy', {
     method,
     path,
@@ -27,8 +56,23 @@ async function request(method, path, body = null) {
     token: _accessToken,
   });
   const { data, status, ok } = res.data;
-  console.log(`[Aurora Proxy] ${method} ${path} -> ${status}`);
   if (!ok) {
+    // If 401, invalidate token and retry once
+    if (status === 401) {
+      clearAccessToken();
+      await ensureToken();
+      const retry = await base44.functions.invoke('auroraProxy', {
+        method, path, payload: body, token: _accessToken,
+      });
+      const r2 = retry.data;
+      if (!r2.ok) {
+        const detail = (typeof r2.data === 'object' && r2.data?.detail) ? r2.data.detail : `Request failed with ${r2.status}`;
+        const error = new Error(detail);
+        error.status = r2.status;
+        throw error;
+      }
+      return r2.data;
+    }
     const detail = (typeof data === 'object' && data?.detail) ? data.detail : `Request failed with ${status}`;
     const error = new Error(detail);
     error.status = status;
