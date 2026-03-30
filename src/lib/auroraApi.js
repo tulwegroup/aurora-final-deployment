@@ -83,9 +83,9 @@ async function request(method, path, body = null) {
 
 // Auth
 export const auth = {
-  login:  (email, password) => request("POST", "/auth/login",  { email, password }),
-  logout: ()                 => request("POST", "/auth/logout"),
-  me:     ()                 => request("GET",  "/auth/me"),
+  login:  (email, password) => request("POST", "/api/v1/auth/login",  { email, password }),
+  logout: ()                 => request("POST", "/api/v1/auth/logout"),
+  me:     ()                 => request("GET",  "/api/v1/auth/me"),
 };
 
 // Scans
