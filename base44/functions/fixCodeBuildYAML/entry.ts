@@ -23,21 +23,21 @@ Deno.serve(async (req) => {
     if (!awsKeyId || !awsSecret) return Response.json({ error: 'AWS credentials not set' }, { status: 500 });
     if (!githubToken) return Response.json({ error: 'GITHUB_PAT not set' }, { status: 500 });
 
-    // Clone aurora_vnext (full app), use its Dockerfile
+    // Clone aurora-final-deployment, build with its Dockerfile
     const buildspec = `version: 0.2
 phases:
   pre_build:
     commands:
       - echo "Logging into ECR..."
       - aws ecr get-login-password --region ${REGION} | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com
-      - echo "Cloning aurora_vnext..."
-      - git clone https://${githubToken}@github.com/tulwegroup/aurora_vnext.git /tmp/aurora_vnext
-      - cd /tmp/aurora_vnext
+      - echo "Cloning aurora-final-deployment..."
+      - git clone https://${githubToken}@github.com/tulwegroup/aurora-final-deployment.git /tmp/deployment
+      - cd /tmp/deployment
       - ls -la
   build:
     commands:
-      - echo "Building Docker image from aurora_vnext..."
-      - docker build -t aurora-api:latest -f aurora_vnext/infra/docker/Dockerfile.api .
+      - echo "Building Docker image..."
+      - docker build -t aurora-api:latest -f Dockerfile .
       - docker tag aurora-api:latest ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${ECR_REPO}:latest
   post_build:
     commands:
