@@ -49,7 +49,6 @@ function buildInlineBuildspec(githubToken) {
     '  post_build:',
     '    commands:',
     `      - docker push ${ECR_URI}:latest`,
-    `      - aws ecs update-service --cluster ${CLUSTER} --service ${SERVICE_NAME} --force-new-deployment --region ${REGION}`,
     '      - echo "Deploy complete"',
   ].join('\n');
 }
