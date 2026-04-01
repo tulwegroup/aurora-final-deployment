@@ -208,9 +208,9 @@ export const groundTruth = {
 
 // Canonical Export
 export const canonicalExport = {
-  json:    (scanId) => `${BASE}/export/${scanId}/json`,
-  geojson: (scanId) => `${BASE}/export/${scanId}/geojson`,
-  csv:     (scanId) => `${BASE}/export/${scanId}/csv`,
+  json:    (scanId) => `${API_ROOT}/export/${scanId}/json`,
+  geojson: (scanId) => `${API_ROOT}/export/${scanId}/geojson`,
+  csv:     (scanId) => `${API_ROOT}/export/${scanId}/csv`,
 };
 
 // Data Room

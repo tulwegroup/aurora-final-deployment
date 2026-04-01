@@ -95,6 +95,7 @@ function LeafletMap({ onGeometryReady, center = [7, -1.5] }) {
   useEffect(() => {
     if (leafletRef.current || !mapRef.current) return;
     import("leaflet").then(L => {
+      if (!mapRef.current) return;
       delete L.Icon.Default.prototype._getIconUrl;
       L.Icon.Default.mergeOptions({
         iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",

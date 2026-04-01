@@ -49,8 +49,8 @@ export default function DeploymentPanel() {
   };
 
   const copyToClipboard = () => {
-    if (script?.stackId) {
-      navigator.clipboard.writeText(JSON.stringify(script, null, 2));
+    if (result?.stackId) {
+      navigator.clipboard.writeText(JSON.stringify(result, null, 2));
       alert('Deployment info copied!');
     }
   };

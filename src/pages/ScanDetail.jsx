@@ -142,7 +142,7 @@ export default function ScanDetail() {
             </div>
           </div>
           <div className="mt-4 flex gap-6 text-xs">
-            <div className="flex items-center gap-2"><div className="w-4 h-4 rounded" style={{ backgroundColor: '#22c55e' }} /><span>Tier 1 — Excellent Prospectivity (>0.75)</span></div>
+            <div className="flex items-center gap-2"><div className="w-4 h-4 rounded" style={{ backgroundColor: '#22c55e' }} /><span>Tier 1 — Excellent Prospectivity (&gt;0.75)</span></div>
             <div className="flex items-center gap-2"><div className="w-4 h-4 rounded" style={{ backgroundColor: '#f97316' }} /><span>Tier 2 — Good (0.50-0.75)</span></div>
             <div className="flex items-center gap-2"><div className="w-4 h-4 rounded" style={{ backgroundColor: '#ef4444' }} /><span>Tier 3 — Fair (&lt;0.50)</span></div>
           </div>
